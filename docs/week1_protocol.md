@@ -98,6 +98,37 @@ Select 30-50 single-axis A/B pairs before bulk outcome rendering. Use the same
 source video, seed, CFG, frame count, and editor checkpoint for both variants.
 Randomize which variant is presented as A to avoid a position bias.
 
+The checked-in pilot builder produces 40 pairs: 10 search, 10 mask, 16
+rewrite, and 4 routing negative controls. Routing is a negative control because
+the current editor bridge records but does not consume `plan.subtask`; those
+pairs should be ties until an actual route-dependent execution path exists.
+
+```bash
+python -m scripts.build_week1_ab_pilot prepare-tools
+
+# Run Aurora on data/week1/ab_tool_cases.jsonl with grounded_sam, then:
+python -m scripts.build_week1_ab_pilot build-records \
+  --resolved runs/week1/ab_tools/agent_pipeline_records.jsonl
+
+python -m aurora.editor_bridge_video \
+  --records_jsonl data/week1/ab_editor_records.jsonl \
+  --ckpt models/aurora_editor.safetensors \
+  --out_dir runs/week1/ab_pilot/videos \
+  --num_frames 45 --save_frames 64 --num_inference_steps 50 \
+  --seed 42 --cfg_scale 2.0 --image_cfg_scale 1.0 \
+  --fallback_to_two_pass_cfg --use_mask_overlay
+
+python -m scripts.build_blind_ab_page \
+  --pairs data/week1/ab_pairs.jsonl \
+  --videos-dir runs/week1/ab_pilot/videos \
+  --out-dir runs/week1/ab_pilot/blind
+```
+
+The blind page copies the candidates to opaque `A`/`B` filenames and stores
+the answer mapping separately in `blind_key.json`. Keep that key away from
+annotators. Human votes are saved in browser local storage and can be exported
+as JSONL.
+
 Store one annotation per line:
 
 ```json
