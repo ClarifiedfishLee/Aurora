@@ -1,0 +1,3 @@
+{"bench_id":"smoke_search_stanley","edit_type":"replace_object","prompt":"Replace the bottle in the person's hands with a rose quartz Stanley Quencher H2.0 tumbler.","video_path":"data/smoke/videos/smoke_002_bottle.mp4"}
+{"bench_id":"smoke_search_pikachu","edit_type":"replace_object","prompt":"Replace the cat with Pikachu in the same position while preserving the rest of the scene.","video_path":"data/smoke/videos/smoke_009_cat.mp4"}
+{"bench_id":"smoke_search_eiffel","edit_type":"add_object","prompt":"Add the Eiffel Tower in the distant background of the city scene without changing the foreground buildings.","video_path":"data/smoke/videos/smoke_005_city.mp4"}
