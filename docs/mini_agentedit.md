@@ -37,6 +37,8 @@ Example:
 
 Do not commit media unless its license explicitly permits redistribution. The
 manifest may be committed while `video_path` points to a private mounted copy.
+Aurora training shards are for SFT/data-pipeline bootstrap only and must not be
+used as Mini-AgentEdit source videos.
 
 ## Agent-only scoring
 
