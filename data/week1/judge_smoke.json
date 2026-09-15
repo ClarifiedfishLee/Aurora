@@ -1,0 +1,12 @@
+[
+  {
+    "id": "judge_smoke_stanley",
+    "path": "data/smoke/videos/smoke_002_bottle.mp4",
+    "source_prompt": "A person holds a clear plastic water bottle with a blue cap.",
+    "target_prompt": "A person holds a rose quartz Stanley Quencher tumbler while the surrounding scene remains unchanged.",
+    "edited_prompt": "Replace the bottle with a rose quartz Stanley Quencher tumbler.",
+    "edit_type": "replace",
+    "edit_model": "aurora",
+    "edit_path": "runs/smoke_search_video/smoke_search_stanley/generate.mp4"
+  }
+]

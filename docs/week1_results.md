@@ -41,3 +41,17 @@ Artifacts:
 Next gate: construct 30-50 single-axis A/B outcome pairs, deploy the official
 UniEditBench 4B video evaluator, obtain human labels without seeing judge
 outputs, and measure overall plus per-axis agreement before bulk rendering.
+
+## Judge deployment smoke
+
+The official Qwen3-VL-4B image+video evaluator was downloaded and served on the
+A100. A complete request using the Stanley smoke edit returned valid five-axis
+JSON, but assigned 5/5 to every dimension. This single result is a warning, not
+an agreement measurement: it may indicate an overly generous generic rubric on
+the fine-grained identity axis. Human-blind labels on the 30-50-pair pilot are
+required before accepting its scores as preference labels.
+
+Deployment required three compatibility fixes documented in
+`docs/week1_protocol.md`: adding the missing `decord` dependency, mapping the
+metadata field names expected by the prompt template, and merging the full LoRA
+before vLLM serving so visual-tower adapter weights are not ignored.

@@ -61,6 +61,39 @@ axis before changing prompts or annotations.
 
 ## 2. Judge agreement pilot
 
+### Judge deployment
+
+Use the official UniEditBench code, Qwen3-VL-4B-Instruct, and the
+`sft_image_video_lora_4b` adapter. On the Merlin Worker run:
+
+```bash
+bash scripts/setup_unieditbench_judge.sh
+```
+
+The script creates its environment and caches under `/tmp`, because the Merlin
+home filesystem does not have enough free space for the official CUDA/vLLM
+dependency set. Base weights and the adapter remain in persistent storage.
+
+There are two upstream integration traps captured by the script and wrapper:
+
+1. `decord` is required to read video but is absent from the published
+   `requirements.txt`.
+2. vLLM ignores LoRA weights attached to visual-tower modules when the adapter
+   is loaded dynamically. The script first merges the complete adapter into the
+   base model, then serves the merged model so the visual weights are retained.
+
+The published inference script also maps `source_prompt`/`target_prompt` into a
+template that expects `original_prompt`/`edited_prompt`. Use the compatibility
+wrapper, which accepts both field conventions and fails the run on errors:
+
+```bash
+python -m evaluation.unieditbench_infer \
+  --metadata data/week1/judge_smoke.json \
+  --save runs/week1/judge_smoke_result.json \
+  --unieditbench_repo /mlx_devbox/users/jieyu.li/external/UniEditBench \
+  --port 8005
+```
+
 Select 30-50 single-axis A/B pairs before bulk outcome rendering. Use the same
 source video, seed, CFG, frame count, and editor checkpoint for both variants.
 Randomize which variant is presented as A to avoid a position bias.
