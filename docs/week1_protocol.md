@@ -145,6 +145,18 @@ python -m evaluation.judge_agreement \
   --out runs/week1/judge_agreement_metrics.json
 ```
 
+For independently scored A/B videos, aggregate the official five dimensions,
+an outcome-focused four-dimension score that excludes structural fidelity, and
+text-video alignment alone:
+
+```bash
+python -m evaluation.pairwise_judge_score \
+  --human data/week1/judge_agreement_human.jsonl \
+  --key runs/week1/ab_pilot/blind/blind_key.json \
+  --judge-results runs/week1/ab_pilot/judge_results.json \
+  --out-dir runs/week1/ab_pilot
+```
+
 The report includes exact agreement, directional agreement after removing ties,
 Cohen's kappa, tie rates, confusion matrices, and per-axis breakdowns. Do not
 start the 300-500-case render batch until the pilot has useful coverage on all
