@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ClarifiedfishLee/Aurora/schemas/mini-agentedit-v0.1.json",
+  "title": "Mini-AgentEdit case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "bench_id",
+    "video_path",
+    "prompt",
+    "edit_type",
+    "axis",
+    "split",
+    "source",
+    "gold_plan",
+    "constraints"
+  ],
+  "properties": {
+    "bench_id": {"type": "string", "pattern": "^mae_[a-z0-9_]+$"},
+    "video_path": {"type": "string", "minLength": 1},
+    "prompt": {"type": "string", "minLength": 1},
+    "edit_type": {"$ref": "#/$defs/subtask"},
+    "axis": {
+      "type": "string",
+      "enum": ["search", "mask", "routing", "rewrite", "mixed"]
+    },
+    "split": {"type": "string", "enum": ["pilot", "dev", "test"]},
+    "holdout_group": {"type": "string"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataset", "source_id", "license"],
+      "properties": {
+        "dataset": {"type": "string", "minLength": 1},
+        "source_id": {"type": "string", "minLength": 1},
+        "license": {"type": "string", "minLength": 1},
+        "url": {"type": "string"}
+      }
+    },
+    "gold_plan": {"$ref": "#/$defs/plan"},
+    "constraints": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/constraint"}
+    },
+    "source_entities": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "notes": {"type": "string"}
+  },
+  "$defs": {
+    "subtask": {
+      "type": "string",
+      "enum": [
+        "global_style",
+        "remove_object",
+        "add_object",
+        "replace_object",
+        "change_background",
+        "change_color",
+        "change_weather",
+        "add_effect",
+        "customization",
+        "combined_tasks",
+        "camera_edit"
+      ]
+    },
+    "tool_value": {
+      "oneOf": [
+        {"const": false},
+        {"type": "string", "minLength": 1}
+      ]
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["refined_text_instruction", "subtask", "image_search", "mask"],
+      "properties": {
+        "refined_text_instruction": {"type": "string", "minLength": 1},
+        "subtask": {"$ref": "#/$defs/subtask"},
+        "image_search": {"$ref": "#/$defs/tool_value"},
+        "mask": {"$ref": "#/$defs/tool_value"}
+      }
+    },
+    "constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "value"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["color", "count", "spatial", "identity", "preservation", "other"]
+        },
+        "value": {"type": "string", "minLength": 1},
+        "aliases": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}
