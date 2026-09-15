@@ -1,0 +1,3 @@
+{"bench_id":"smoke_mask_bottle","edit_type":"remove_object","prompt":"Remove the bottle held by the person and reconstruct the occluded background naturally.","video_path":"data/smoke/videos/smoke_002_bottle.mp4"}
+{"bench_id":"smoke_mask_bicycle","edit_type":"remove_object","prompt":"Remove the bicycle in front of the wall and reconstruct the wall and ground behind it.","video_path":"data/smoke/videos/smoke_008_bicycle.mp4"}
+{"bench_id":"smoke_mask_car","edit_type":"remove_object","prompt":"Remove the car from the road while preserving the road and surrounding scene.","video_path":"data/smoke/videos/smoke_003_car.mp4"}
