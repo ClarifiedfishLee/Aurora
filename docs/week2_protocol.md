@@ -53,3 +53,19 @@ The initial degradation is deterministic and meaning-preserving. It exists to
 validate the end-to-end training path, not to claim the final eight-category
 hard-case contribution. Hard-case generation and semantic validation are added
 only after the 500-case training smoke passes.
+
+Create an isolated LLaMA-Factory bundle and launch the one-epoch smoke:
+
+```bash
+python -m scripts.make_llamafactory_config \
+  --dataset /tmp/aurora-sft-bootstrap-500/sft_llama.jsonl \
+  --model /path/to/Qwen3-VL-8B-Instruct \
+  --output-dir /tmp/aurora-sft-bootstrap-500/lora-smoke \
+  --config-out /tmp/aurora-sft-bootstrap-500/train.yaml
+
+llamafactory-cli train /tmp/aurora-sft-bootstrap-500/train.yaml
+```
+
+The generated smoke config matches Aurora's LoRA rank 32 / alpha 64, uses the
+official `qwen3_vl_nothink` template, validates one `<video>` token per media
+path, and limits video pixels before any GPU allocation.

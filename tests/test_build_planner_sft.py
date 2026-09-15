@@ -36,6 +36,8 @@ class BuildPlannerSftTest(unittest.TestCase):
         self.assertEqual(
             canonical[0]["target_plan"]["refined_text_instruction"], manifest[0]["clean_instruction"]
         )
+        self.assertEqual(llama[0]["system"], "system")
+        self.assertEqual(len(llama[0]["messages"]), 2)
         self.assertEqual(llama[0]["videos"], [str(Path("/tmp/s1.mp4").resolve())])
 
 

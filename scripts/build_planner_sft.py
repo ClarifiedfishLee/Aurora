@@ -89,8 +89,8 @@ def compose(
         )
         llama.append(
             {
+                "system": system_prompt,
                 "messages": [
-                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"<video>\n{raw_request}"},
                     {"role": "assistant", "content": target},
                 ],
