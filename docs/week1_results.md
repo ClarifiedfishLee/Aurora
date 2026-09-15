@@ -55,3 +55,30 @@ Deployment required three compatibility fixes documented in
 `docs/week1_protocol.md`: adding the missing `decord` dependency, mapping the
 metadata field names expected by the prompt template, and merging the full LoRA
 before vLLM serving so visual-tower adapter weights are not ignored.
+
+## Judge agreement gate
+
+The 40-pair blind pilot yielded 29 usable human preferences and 11 invalid
+renders (27.5%). Independent UniEditBench five-dimension scoring reached 76.9%
+directional agreement overall, but the aggregate hides severe axis imbalance:
+search reached 100%, mask 66.7%, and rewrite 50.0%. Structural fidelity also
+penalizes some intended replacements and removals, so it is not a universal
+outcome reward.
+
+An axis-aware pairwise protocol was then tested with interleaved media labels
+(`SOURCE`, `CANDIDATE A`, `CANDIDATE B`). Qwen3-VL-8B improved rewrite to 83.3%
+directional agreement, but reached only 66.7% on search and 50.0% on mask. The
+overall directional agreement was 68.8%. Consecutive unlabeled video inputs
+were rejected because both 4B and 8B models confused candidate order.
+
+The Week-1 decision is therefore a partial gate:
+
+- use independent UniEditBench scoring for search pairs;
+- use labeled Qwen3-VL-8B pairwise scoring for rewrite pairs;
+- require deterministic mask checks plus human audit for mask pairs;
+- keep routing as a negative control because the current editor bridge records
+  but does not consume `plan.subtask`;
+- do not begin the 300-500-pair outcome render batch until invalid renders are
+  reduced and the mask rubric is validated.
+
+Week 2 planner SFT can proceed independently of this render gate.

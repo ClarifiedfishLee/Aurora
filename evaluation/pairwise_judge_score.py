@@ -79,6 +79,7 @@ def aggregate(
             "pair_id": pair_id,
             "axis": pair_key["axis"],
             "human_label": base["human_label"],
+            "human_notes": base["human_notes"],
             "good_side": pair_key["good_side"],
             "scores": {"A": left, "B": right},
             "judge_labels": {},

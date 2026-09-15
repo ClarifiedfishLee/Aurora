@@ -42,6 +42,7 @@ class PairwiseJudgeScoreTest(unittest.TestCase):
         self.assertEqual(summary["metrics"]["alignment"]["overall"]["directional_agreement"], 1.0)
         self.assertEqual(annotations["alignment"][0]["judge_label"], "A")
         self.assertEqual(details[1]["human_label"], "invalid")
+        self.assertEqual(details[1]["human_notes"], "broken")
 
 
 if __name__ == "__main__":

@@ -164,6 +164,23 @@ four axes and disagreements have been reviewed. A practical go/no-go target is
 at least 70% directional agreement overall, with no axis dominated by ties; the
 threshold is a project decision, not a claim about a universal judge standard.
 
+If independent five-dimension scoring is dominated by ties or treats an
+intended replacement/removal as a structural-fidelity failure, run the
+axis-aware pairwise rubric on the same rendered pilot. It presents source, A,
+and B together and directly predicts `A`, `B`, `tie`, or `invalid`:
+
+```bash
+python -m evaluation.axis_pairwise_judge run \
+  --key runs/week1/ab_pilot/blind/blind_key.json \
+  --cases data/week1/planner_100.jsonl \
+  --save runs/week1/ab_pilot/axis_pairwise_results.json
+
+python -m evaluation.axis_pairwise_judge score \
+  --results runs/week1/ab_pilot/axis_pairwise_results.json \
+  --human data/week1/judge_agreement_human.jsonl \
+  --out runs/week1/ab_pilot/axis_pairwise_summary.json
+```
+
 ## 3. Frozen Mini-AgentEdit boundary
 
 The final 150-200-case benchmark must use videos that do not occur in smoke
