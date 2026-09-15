@@ -14,6 +14,12 @@ uv run --no-project --with imageio-ffmpeg python scripts/prepare_smoke_assets.py
 python3 scripts/validate_smoke_cases.py
 ```
 
+For the complete Aurora environment on a Linux CUDA host, use the uv installer:
+
+```bash
+UV_CACHE_DIR=/tmp/aurora-uv-cache bash scripts/setup_env_uv.sh
+```
+
 ## 2. Configure Serper without committing the key
 
 ```bash
