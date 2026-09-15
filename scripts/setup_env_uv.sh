@@ -44,7 +44,8 @@ FLASH_ATTN_WHEEL="https://github.com/Dao-AILab/flash-attention/releases/download
 uv pip install --python "${PYTHON_BIN}" "${FLASH_ATTN_WHEEL}"
 
 echo "--- Installing DeepSpeed and evaluation dependencies ---"
-CUDA_HOME="${CUDA_HOME}" uv pip install --python "${PYTHON_BIN}" deepspeed
+# DeepSpeed 0.19.x uses custom-op schemas that PyTorch 2.5 cannot infer.
+CUDA_HOME="${CUDA_HOME}" uv pip install --python "${PYTHON_BIN}" deepspeed==0.15.4
 uv pip install --python "${PYTHON_BIN}" \
     decord openai ftfy opencv-python-headless "diffusers>=0.36"
 
