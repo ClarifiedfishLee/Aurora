@@ -38,6 +38,9 @@ uv pip install --python "${PYTHON_BIN}" \
 
 # modelscope may select a different transformers build, so pin it afterwards.
 uv pip install --python "${PYTHON_BIN}" transformers==5.3.0
+# Transformers 5.x requires huggingface-hub 1.x; upgrade datasets afterwards so
+# its metadata accepts the same hub version selected by transformers.
+uv pip install --python "${PYTHON_BIN}" --upgrade "datasets>=5.0.1"
 
 echo "--- Installing prebuilt flash-attn 2.7.3 wheel ---"
 FLASH_ATTN_WHEEL="https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.3/flash_attn-2.7.3%2Bcu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl"
