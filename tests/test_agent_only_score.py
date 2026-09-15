@@ -8,6 +8,7 @@ class AgentOnlyScoreTest(unittest.TestCase):
         gold = [
             {
                 "bench_id": "mae_pilot_0001",
+                "axis": "rewrite",
                 "gold_plan": {
                     "refined_text_instruction": "Change the cup to red and keep two plates.",
                     "subtask": "change_color",
@@ -18,9 +19,11 @@ class AgentOnlyScoreTest(unittest.TestCase):
                     {"type": "color", "value": "red"},
                     {"type": "count", "value": "two", "aliases": ["2", "both"]},
                 ],
+                "source_entities": ["cup", "plates"],
             },
             {
                 "bench_id": "mae_pilot_0002",
+                "axis": "search",
                 "gold_plan": {
                     "refined_text_instruction": "Replace the bottle with a Stanley tumbler.",
                     "subtask": "replace_object",
@@ -28,6 +31,7 @@ class AgentOnlyScoreTest(unittest.TestCase):
                     "mask": "bottle",
                 },
                 "constraints": [{"type": "identity", "value": "Stanley tumbler"}],
+                "source_entities": ["bottle"],
             },
         ]
         predictions = [
@@ -58,7 +62,11 @@ class AgentOnlyScoreTest(unittest.TestCase):
         self.assertEqual(metrics["image_search_trigger"]["f1"], 0.0)
         self.assertEqual(metrics["mask_trigger"]["recall"], 0.5)
         self.assertEqual(metrics["constraint_retention"], 2 / 3)
+        self.assertEqual(metrics["source_entity_false_trigger"]["num_cases"], 1)
+        self.assertEqual(metrics["source_entity_false_trigger"]["rate"], 0.0)
         self.assertEqual(metrics["details"]["routing_errors"][0]["bench_id"], "mae_pilot_0002")
+        self.assertEqual(metrics["by_axis"]["rewrite"]["subtask_accuracy"], 1.0)
+        self.assertEqual(metrics["by_axis"]["search"]["subtask_accuracy"], 0.0)
 
 
 if __name__ == "__main__":

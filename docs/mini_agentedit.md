@@ -52,6 +52,10 @@ python -m evaluation.agent_only_score \
 ```
 
 The first version reports JSON validity, subtask accuracy, search-trigger F1,
-mask-trigger F1, constraint retention, and error IDs. Search-query quality,
+mask-trigger F1, constraint retention, source-entity false-trigger rate, and
+error IDs. Search-query quality,
 mask granularity, and reference selection require separate axis-specific
 rubrics and are intentionally not collapsed into the trigger metrics.
+
+The smoke-media-based 100-case suite described in `docs/week1_protocol.md` is a
+development regression set, not part of Mini-AgentEdit.

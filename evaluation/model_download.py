@@ -142,6 +142,19 @@ def resolve_agent_paths(agent_base, agent_adapter, paths=None, token=None, verbo
     return str(base), str(adapter)
 
 
+def resolve_agent_base(agent_base, paths=None, token=None, verbose=True) -> str:
+    """Resolve only the Qwen3-VL base model for adapter-free evaluation."""
+    if paths is None:
+        from evaluation.pipeline_loader import default_paths
+        paths = default_paths()
+    base = paths.model_dir / "Qwen3-VL-8B-Instruct"
+    if agent_base is not None and Path(str(agent_base)).exists():
+        return str(agent_base)
+    if not (base / "config.json").exists():
+        _snapshot(AGENT_BASE_REPO, base, token=token, verbose=verbose)
+    return str(base)
+
+
 def main():
     import argparse
 

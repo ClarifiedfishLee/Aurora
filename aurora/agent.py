@@ -293,13 +293,12 @@ class AgentVLM:
     def __init__(
         self,
         base_model: Path,
-        adapter_path: Path,
+        adapter_path: Path | None,
         *,
         device: str = "cuda:0",
         dtype: torch.dtype = torch.bfloat16,
         max_new_tokens: int = 256,
     ) -> None:
-        from peft import PeftModel
         from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
         self.device = device
@@ -311,7 +310,11 @@ class AgentVLM:
             device_map=device,
             trust_remote_code=True,
         )
-        self.model = PeftModel.from_pretrained(model, str(adapter_path)).merge_and_unload()
+        if adapter_path is not None:
+            from peft import PeftModel
+
+            model = PeftModel.from_pretrained(model, str(adapter_path)).merge_and_unload()
+        self.model = model
         self.model.eval()
 
     def _generate_from_parts(
@@ -666,7 +669,7 @@ def process_case(
 
     search_info: dict[str, Any] = {"agent_query": None, "query": None, "selected_path": None, "selector_raw": "", "candidates": []}
     query = _as_query(plan.get("image_search"))
-    if query and not ref:
+    if query and not ref and not getattr(args, "plan_only", False):
         tool_query = refine_search_query(query, plan, case)
         text_desc = run_text_search(tool_query, args.text_search_top_k)
         results = run_image_search(tool_query, out_dir, bench_id, args.image_search_top_k)
@@ -701,7 +704,7 @@ def process_case(
 
     mask_info: dict[str, Any] = {"phrase": None, "mask_path": None, "overlay_path": None, "meta": None}
     mask_phrase = _as_query(plan.get("mask"))
-    if mask_phrase and masker is not None:
+    if mask_phrase and masker is not None and not getattr(args, "plan_only", False):
         mask, meta = masker.segment(frames[0], mask_phrase)
         mask_path = save_png(mask, case_dir / "object_mask.png")
         overlay_path = save_jpeg(overlay_mask(frames[0], mask), case_dir / "object_mask_overlay.jpg")
@@ -731,6 +734,11 @@ def main() -> None:
     parser.add_argument("--out_dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--agent_base", type=Path, default=DEFAULT_AGENT_BASE)
     parser.add_argument("--agent_adapter", type=Path, default=DEFAULT_AGENT_ADAPTER)
+    parser.add_argument(
+        "--no_agent_adapter",
+        action="store_true",
+        help="Run the base Qwen3-VL planner without loading the Aurora LoRA adapter.",
+    )
     parser.add_argument("--agent_backend", choices=["hf", "vllm"], default="hf",
                         help="Planner backend: 'hf' (transformers, reference) or 'vllm'.")
     parser.add_argument("--agent_merged_dir", type=Path, default=None,
@@ -747,6 +755,12 @@ def main() -> None:
     parser.add_argument("--image_search_top_k", type=int, default=5)
     parser.add_argument("--text_search_top_k", type=int, default=5)
     parser.add_argument("--mask_backend", choices=["none", "grounded_sam"], default="grounded_sam")
+    parser.add_argument(
+        "--plan_only",
+        action="store_true",
+        help="Record planner decisions without executing image search or mask tools. "
+             "Unlike --disable_image_search, this preserves the predicted trigger fields.",
+    )
     parser.add_argument("--dino_model", default="IDEA-Research/grounding-dino-base")
     parser.add_argument("--sam_model", default="facebook/sam-vit-base")
     parser.add_argument(
@@ -781,8 +795,12 @@ def main() -> None:
     if args.agent_backend == "hf":
         # Auto-download the Qwen3-VL base + aurora_agent_vlm adapter on first use.
         sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-        from evaluation.model_download import resolve_agent_paths
-        args.agent_base, args.agent_adapter = resolve_agent_paths(args.agent_base, args.agent_adapter)
+        from evaluation.model_download import resolve_agent_base, resolve_agent_paths
+        if args.no_agent_adapter:
+            args.agent_base = resolve_agent_base(args.agent_base)
+            args.agent_adapter = None
+        else:
+            args.agent_base, args.agent_adapter = resolve_agent_paths(args.agent_base, args.agent_adapter)
 
     setup_serper_env(args.serper_api_key)
     wanted = {x.strip() for x in args.bench_ids.split(",") if x.strip()} or None
@@ -803,7 +821,7 @@ def main() -> None:
 
     print(f"Loaded {len(cases)} cases")
     print(f"Agent base: {args.agent_base}")
-    print(f"Agent adapter: {args.agent_adapter}")
+    print(f"Agent adapter: {args.agent_adapter or 'none (base model)'}")
     if args.agent_backend == "vllm":
         from aurora.agent_vllm import AgentVLMvLLM
         agent = AgentVLMvLLM(args.agent_merged_dir or args.agent_base, device=args.device,
