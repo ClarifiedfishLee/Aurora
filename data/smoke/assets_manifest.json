@@ -1,0 +1,132 @@
+[
+  {
+    "asset_id": "smoke_001_dog",
+    "query": "golden retriever dog grass",
+    "video_path": "data/smoke/videos/smoke_001_dog.mp4",
+    "source": {
+      "title": "File:Smiling golden retriever in a grass field.jpg",
+      "description_url": "https://commons.wikimedia.org/wiki/File:Smiling_golden_retriever_in_a_grass_field.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5a/Smiling_golden_retriever_in_a_grass_field.jpg/960px-Smiling_golden_retriever_in_a_grass_field.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "license": "CC BY-SA 4.0",
+      "artist": "Vetman212",
+      "credit": "Own work"
+    }
+  },
+  {
+    "asset_id": "smoke_002_bottle",
+    "query": "person holding water bottle",
+    "video_path": "data/smoke/videos/smoke_002_bottle.mp4",
+    "source": {
+      "title": "File:Bottled water.jpg",
+      "description_url": "https://commons.wikimedia.org/wiki/File:Bottled_water.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b1/Bottled_water.jpg/960px-Bottled_water.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "license": "CC BY-SA 4.0",
+      "artist": "H.A.W.C 101",
+      "credit": "Own work"
+    }
+  },
+  {
+    "asset_id": "smoke_003_car",
+    "query": "red car street",
+    "video_path": "data/smoke/videos/smoke_003_car.mp4",
+    "source": {
+      "title": "File:25th Street. San Francisco, CA - Red Car, Chase Bank.jpg",
+      "description_url": "https://commons.wikimedia.org/wiki/File:25th_Street._San_Francisco,_CA_-_Red_Car,_Chase_Bank.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fd/25th_Street._San_Francisco%2C_CA_-_Red_Car%2C_Chase_Bank.jpg/960px-25th_Street._San_Francisco%2C_CA_-_Red_Car%2C_Chase_Bank.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "license": "CC BY 2.0",
+      "artist": "Kathy Drasky",
+      "credit": "https://www.flickr.com/photos/12837894@N04/51277762460/"
+    }
+  },
+  {
+    "asset_id": "smoke_004_cup",
+    "query": "coffee mug wooden table",
+    "video_path": "data/smoke/videos/smoke_004_cup.mp4",
+    "source": {
+      "title": "File:Mug of Coffee on a Wooden Table (26804116318).jpg",
+      "description_url": "https://commons.wikimedia.org/wiki/File:Mug_of_Coffee_on_a_Wooden_Table_(26804116318).jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/75/Mug_of_Coffee_on_a_Wooden_Table_%2826804116318%29.jpg/960px-Mug_of_Coffee_on_a_Wooden_Table_%2826804116318%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "license": "CC0",
+      "artist": "freestocks.org from Olsztyn, Poland",
+      "credit": "Mug of Coffee on a Wooden Table"
+    }
+  },
+  {
+    "asset_id": "smoke_005_city",
+    "query": "city skyline daylight",
+    "video_path": "data/smoke/videos/smoke_005_city.mp4",
+    "source": {
+      "title": "File:Manhattan Skyline - Flickr - Peter Zoon.jpg",
+      "description_url": "https://commons.wikimedia.org/wiki/File:Manhattan_Skyline_-_Flickr_-_Peter_Zoon.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/71/Manhattan_Skyline_-_Flickr_-_Peter_Zoon.jpg/960px-Manhattan_Skyline_-_Flickr_-_Peter_Zoon.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "license": "CC BY 2.0",
+      "artist": "Peter Zoon from Castricum, The Netherlands",
+      "credit": "Manhattan Skyline"
+    }
+  },
+  {
+    "asset_id": "smoke_006_person",
+    "query": "person walking outdoors",
+    "video_path": "data/smoke/videos/smoke_006_person.mp4",
+    "source": {
+      "title": "File:Women are walking through the outdoors shopping mall in the Jodenbreestraat; free photo Amsterdam, Fons Heijnsbroek, 12-10-2021.jpg",
+      "description_url": "https://commons.wikimedia.org/wiki/File:Women_are_walking_through_the_outdoors_shopping_mall_in_the_Jodenbreestraat;_free_photo_Amsterdam,_Fons_Heijnsbroek,_12-10-2021.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b0/Women_are_walking_through_the_outdoors_shopping_mall_in_the_Jodenbreestraat%3B_free_photo_Amsterdam%2C_Fons_Heijnsbroek%2C_12-10-2021.jpg/960px-Women_are_walking_through_the_outdoors_shopping_mall_in_the_Jodenbreestraat%3B_free_photo_Amsterdam%2C_Fons_Heijnsbroek%2C_12-10-2021.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "license": "CC0",
+      "artist": "Fons Heijnsbroek",
+      "credit": "Own work"
+    }
+  },
+  {
+    "asset_id": "smoke_007_beach",
+    "query": "sandy beach ocean",
+    "video_path": "data/smoke/videos/smoke_007_beach.mp4",
+    "source": {
+      "title": "File:Havelock Island, Sandy lagoon, Andaman Islands.jpg",
+      "description_url": "https://commons.wikimedia.org/wiki/File:Havelock_Island,_Sandy_lagoon,_Andaman_Islands.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/19/Havelock_Island%2C_Sandy_lagoon%2C_Andaman_Islands.jpg/960px-Havelock_Island%2C_Sandy_lagoon%2C_Andaman_Islands.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "license": "CC BY 4.0",
+      "artist": "Vyacheslav Argenberg",
+      "credit": "Own work"
+    }
+  },
+  {
+    "asset_id": "smoke_008_bicycle",
+    "query": "bicycle street",
+    "video_path": "data/smoke/videos/smoke_008_bicycle.mp4",
+    "source": {
+      "title": "File:Parked bicycle with graffitied building facade and doors in Amsterdam.jpg",
+      "description_url": "https://commons.wikimedia.org/wiki/File:Parked_bicycle_with_graffitied_building_facade_and_doors_in_Amsterdam.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/36/Parked_bicycle_with_graffitied_building_facade_and_doors_in_Amsterdam.jpg/960px-Parked_bicycle_with_graffitied_building_facade_and_doors_in_Amsterdam.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "license": "CC BY-SA 4.0",
+      "artist": "Basile Morin",
+      "credit": "Own work"
+    }
+  },
+  {
+    "asset_id": "smoke_009_cat",
+    "query": "domestic cat sitting couch",
+    "video_path": "data/smoke/videos/smoke_009_cat.mp4",
+    "source": {
+      "title": "File:Cat-on-couch.jpg",
+      "description_url": "https://commons.wikimedia.org/wiki/File:Cat-on-couch.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6b/Cat-on-couch.jpg/960px-Cat-on-couch.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "license": "CC0",
+      "artist": "Christoffer G. Thomsen",
+      "credit": "Own work"
+    }
+  },
+  {
+    "asset_id": "smoke_010_tree",
+    "query": "autumn tree park",
+    "video_path": "data/smoke/videos/smoke_010_tree.mp4",
+    "source": {
+      "title": "File:Münster, Park Sentmaring -- 2015 -- 9923.jpg",
+      "description_url": "https://commons.wikimedia.org/wiki/File:M%C3%BCnster,_Park_Sentmaring_--_2015_--_9923.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/89/M%C3%BCnster%2C_Park_Sentmaring_--_2015_--_9923.jpg/960px-M%C3%BCnster%2C_Park_Sentmaring_--_2015_--_9923.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "license": "CC BY-SA 4.0",
+      "artist": "Dietmar Rabich",
+      "credit": "Own work"
+    }
+  }
+]

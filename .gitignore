@@ -142,3 +142,10 @@ test/
 .codex
 .claude
 .mcp.json
+
+# Aurora-OutcomeDPO local/runtime artifacts
+.env.local
+data/smoke/source_images/
+data/smoke/videos/
+runs/
+log/

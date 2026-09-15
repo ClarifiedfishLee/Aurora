@@ -1,0 +1,10 @@
+{"bench_id":"smoke_001_dog","edit_type":"change_color","prompt":"Make the dog bright blue while keeping the rest of the scene unchanged.","video_path":"data/smoke/videos/smoke_001_dog.mp4"}
+{"bench_id":"smoke_002_bottle","edit_type":"replace_object","prompt":"Replace the bottle the person is holding with a silver travel tumbler.","video_path":"data/smoke/videos/smoke_002_bottle.mp4"}
+{"bench_id":"smoke_003_car","edit_type":"change_color","prompt":"Change the car to emerald green and preserve the road and surroundings.","video_path":"data/smoke/videos/smoke_003_car.mp4"}
+{"bench_id":"smoke_004_cup","edit_type":"add_object","prompt":"Add a small red flower beside the coffee cup on the table.","video_path":"data/smoke/videos/smoke_004_cup.mp4"}
+{"bench_id":"smoke_005_city","edit_type":"change_weather","prompt":"Make the city scene look like a rainy evening without changing the buildings.","video_path":"data/smoke/videos/smoke_005_city.mp4"}
+{"bench_id":"smoke_006_person","edit_type":"change_color","prompt":"Change the person's clothing to yellow while preserving their face and the background.","video_path":"data/smoke/videos/smoke_006_person.mp4"}
+{"bench_id":"smoke_007_beach","edit_type":"add_object","prompt":"Add one red beach umbrella near the water.","video_path":"data/smoke/videos/smoke_007_beach.mp4"}
+{"bench_id":"smoke_008_bicycle","edit_type":"remove_object","prompt":"Remove the bicycle and reconstruct the background naturally.","video_path":"data/smoke/videos/smoke_008_bicycle.mp4"}
+{"bench_id":"smoke_009_cat","edit_type":"replace_object","prompt":"Replace the cat with a small golden retriever in the same position.","video_path":"data/smoke/videos/smoke_009_cat.mp4"}
+{"bench_id":"smoke_010_tree","edit_type":"add_effect","prompt":"Add gently falling snow while keeping the tree and ground visible.","video_path":"data/smoke/videos/smoke_010_tree.mp4"}
