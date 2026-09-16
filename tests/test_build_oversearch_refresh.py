@@ -237,12 +237,57 @@ class BuildOversearchRefreshTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected exactly two messages"):
             build_refresh(malformed, self.base_eval, forbidden_case_rows=self.forbidden_cases)
 
-    def test_rejects_mask_that_violates_upstream_contract(self) -> None:
-        malformed = list(self.base_train)
-        bad_plan = plan("Remove the fixture.", "remove_object", mask=False)
-        malformed[0] = make_row(99999, "train", "remove the fixture", bad_plan)
-        with self.assertRaisesRegex(ValueError, "remove_object requires a mask noun phrase"):
-            build_refresh(malformed, self.base_eval, forbidden_case_rows=self.forbidden_cases)
+    def test_contract_invalid_history_is_audited_and_never_replayed(self) -> None:
+        polluted_train = list(self.base_train)
+        polluted_eval = list(self.base_eval)
+        train_prompt = "polluted historical combined label"
+        eval_prompt = "polluted historical removal label"
+        polluted_train[0] = make_row(
+            99998,
+            "train",
+            train_prompt,
+            plan(
+                "Change the main object and its setting.",
+                "combined_tasks",
+                mask="main object",
+            ),
+        )
+        polluted_eval[0] = make_row(
+            99999,
+            "eval",
+            eval_prompt,
+            plan("Remove the foreground prop.", "remove_object", mask=False),
+        )
+
+        train, validation, _, _, summary = build_refresh(
+            polluted_train,
+            polluted_eval,
+            forbidden_case_rows=self.forbidden_cases,
+        )
+
+        exclusions = summary["input_contract_exclusions"]
+        self.assertEqual(exclusions["train"]["rows"], 1)
+        self.assertEqual(
+            exclusions["train"]["by_violation_type"],
+            {"mask_not_allowed_for_subtask": 1},
+        )
+        self.assertEqual(exclusions["train"]["by_subtask"], {"combined_tasks": 1})
+        self.assertEqual(exclusions["eval"]["rows"], 1)
+        self.assertEqual(
+            exclusions["eval"]["by_violation_type"],
+            {"remove_object_missing_mask": 1},
+        )
+        self.assertEqual(exclusions["eval"]["by_subtask"], {"remove_object": 1})
+
+        rendered = json.dumps([*train, *validation], ensure_ascii=False)
+        self.assertNotIn(train_prompt, rendered)
+        self.assertNotIn(eval_prompt, rendered)
+        for row in [*train, *validation]:
+            output_plan = json.loads(row["messages"][1]["content"])
+            if output_plan["subtask"] == "remove_object":
+                self.assertIsInstance(output_plan["mask"], str)
+            else:
+                self.assertIs(output_plan["mask"], False)
 
 
 if __name__ == "__main__":

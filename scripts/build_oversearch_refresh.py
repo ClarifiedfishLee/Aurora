@@ -228,6 +228,7 @@ class ParsedRow:
     plan: dict[str, Any]
     video: str
     fingerprint: str
+    contract_violations: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -275,7 +276,24 @@ def _prompt_from_user(content: Any) -> str:
     return after.strip()
 
 
-def parse_rows(rows: Sequence[dict[str, Any]], label: str) -> list[ParsedRow]:
+def _contract_violations(plan: dict[str, Any]) -> tuple[str, ...]:
+    violations: list[str] = []
+    if isinstance(plan["image_search"], str) and plan["subtask"] not in SEARCHABLE_SUBTASKS:
+        violations.append("image_search_not_allowed_for_subtask")
+    if plan["subtask"] == "remove_object":
+        if not isinstance(plan["mask"], str):
+            violations.append("remove_object_missing_mask")
+    elif plan["mask"] is not False:
+        violations.append("mask_not_allowed_for_subtask")
+    return tuple(violations)
+
+
+def parse_rows(
+    rows: Sequence[dict[str, Any]],
+    label: str,
+    *,
+    allow_contract_violations: bool = False,
+) -> list[ParsedRow]:
     parsed: list[ParsedRow] = []
     for index, row in enumerate(rows, 1):
         system = row.get("system")
@@ -298,18 +316,24 @@ def parse_rows(rows: Sequence[dict[str, Any]], label: str) -> list[ParsedRow]:
             raise ValueError(f"{label} row {index}: invalid assistant JSON") from exc
         if not valid_plan(plan):
             raise ValueError(f"{label} row {index}: invalid planner contract")
-        if isinstance(plan["image_search"], str) and plan["subtask"] not in SEARCHABLE_SUBTASKS:
+        violations = _contract_violations(plan)
+        if violations and not allow_contract_violations:
             raise ValueError(
-                f"{label} row {index}: image_search is illegal for {plan['subtask']}"
+                f"{label} row {index}: current planner contract violation(s): "
+                + ", ".join(violations)
             )
-        if plan["subtask"] == "remove_object":
-            if not isinstance(plan["mask"], str):
-                raise ValueError(f"{label} row {index}: remove_object requires a mask noun phrase")
-        elif plan["mask"] is not False:
-            raise ValueError(f"{label} row {index}: mask must be false for {plan['subtask']}")
         canonical_plan = json.dumps(plan, ensure_ascii=False, sort_keys=True)
         fingerprint = _stable_hash(videos[0], normalize(prompt), canonical_plan)
-        parsed.append(ParsedRow(row=row, prompt=prompt, plan=plan, video=videos[0], fingerprint=fingerprint))
+        parsed.append(
+            ParsedRow(
+                row=row,
+                prompt=prompt,
+                plan=plan,
+                video=videos[0],
+                fingerprint=fingerprint,
+                contract_violations=violations,
+            )
+        )
     return parsed
 
 
@@ -329,7 +353,7 @@ def _forbidden(row: dict[str, Any], forbidden_concepts: Sequence[str]) -> bool:
 
 
 def _make_record(source: ParsedRow, request: str, plan: dict[str, Any]) -> dict[str, Any]:
-    if set(plan) != PLAN_FIELDS or not valid_plan(plan):
+    if set(plan) != PLAN_FIELDS or not valid_plan(plan) or _contract_violations(plan):
         raise ValueError(f"attempted to build an invalid plan: {plan}")
     return {
         "system": source.row["system"],
@@ -565,7 +589,8 @@ def _select_train_search_replay(
             candidates = [
                 row
                 for row in rows
-                if row.plan["subtask"] == subtask
+                if not row.contract_violations
+                and row.plan["subtask"] == subtask
                 and isinstance(row.plan["image_search"], str)
                 and _external_entity_group(str(row.plan["image_search"])) == group
                 and not _forbidden(row.row, forbidden_concepts)
@@ -615,7 +640,8 @@ def _select_train_route_replay(
             salt=f"route-{subtask}",
             used_fingerprints=used,
             predicate=lambda row, expected=subtask: (
-                row.plan["subtask"] == expected
+                not row.contract_violations
+                and row.plan["subtask"] == expected
                 and row.plan["image_search"] is False
                 and not _forbidden(row.row, forbidden_concepts)
                 and normalize(row.prompt) not in forbidden_prompts
@@ -629,7 +655,11 @@ _ROUTING_CALIBRATION_PROMPTS = {normalize(item[0]) for item in ROUTING_TEMPLATES
 
 
 def _is_original_like(row: ParsedRow) -> bool:
-    return not isinstance(row.plan["image_search"], str) and normalize(row.prompt) not in _ROUTING_CALIBRATION_PROMPTS
+    return (
+        not row.contract_violations
+        and not isinstance(row.plan["image_search"], str)
+        and normalize(row.prompt) not in _ROUTING_CALIBRATION_PROMPTS
+    )
 
 
 def _select_diverse_original_replay(
@@ -904,6 +934,28 @@ def _assert_expected_counts(train: Sequence[BuiltRow], validation: Sequence[Buil
         )
 
 
+def _contract_exclusion_audit(rows: Sequence[ParsedRow]) -> dict[str, Any]:
+    excluded = [row for row in rows if row.contract_violations]
+    by_violation = Counter(
+        violation for row in excluded for violation in row.contract_violations
+    )
+    by_subtask = Counter(str(row.plan["subtask"]) for row in excluded)
+    by_violation_and_subtask: dict[str, Counter[str]] = defaultdict(Counter)
+    for row in excluded:
+        for violation in row.contract_violations:
+            by_violation_and_subtask[violation][str(row.plan["subtask"])] += 1
+    return {
+        "rows": len(excluded),
+        "replay_eligible_rows": len(rows) - len(excluded),
+        "by_violation_type": dict(sorted(by_violation.items())),
+        "by_subtask": dict(sorted(by_subtask.items())),
+        "by_violation_and_subtask": {
+            violation: dict(sorted(counts.items()))
+            for violation, counts in sorted(by_violation_and_subtask.items())
+        },
+    }
+
+
 def build_refresh(
     train_rows: Sequence[dict[str, Any]],
     eval_rows: Sequence[dict[str, Any]],
@@ -918,8 +970,17 @@ def build_refresh(
                 f"{DEFAULT_FORBIDDEN_CASE_PATH}"
             )
         forbidden_case_rows = load_jsonl(DEFAULT_FORBIDDEN_CASE_PATH)
-    train_source = parse_rows(train_rows, "base train")
-    eval_source = parse_rows(eval_rows, "base eval")
+    # Historical v2 labels are parsed without rewriting.  Rows that violate
+    # the current type1 contract remain available only as video/system sources
+    # for newly generated examples and are excluded from every replay pool.
+    train_source = parse_rows(
+        train_rows, "base train", allow_contract_violations=True
+    )
+    eval_source = parse_rows(eval_rows, "base eval", allow_contract_violations=True)
+    input_contract_exclusions = {
+        "train": _contract_exclusion_audit(train_source),
+        "eval": _contract_exclusion_audit(eval_source),
+    }
     train_videos = {row.video for row in train_source}
     eval_videos = {row.video for row in eval_source}
     input_video_overlap = train_videos & eval_videos
@@ -1065,6 +1126,7 @@ def build_refresh(
             "eval_videos": len(eval_videos),
             "video_overlap": 0,
         },
+        "input_contract_exclusions": input_contract_exclusions,
         "counts": {
             "train": len(train),
             "validation": len(validation),
