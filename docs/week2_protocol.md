@@ -97,3 +97,32 @@ The external-entity catalog deliberately excludes identities used by the
 `customization`, which requires a real reference image and must not be faked
 with a video-only record. Re-run the same 100-case gate before expanding the
 working set.
+
+The calibrated 1,500-case run passed that gate:
+
+| Model | JSON | Routing | Search F1 | Mask F1 | Constraint retention | False search |
+|---|---:|---:|---:|---:|---:|---:|
+| Released Aurora LoRA | 100% | 78% | 88.9% | 100% | 48.0% | 0% |
+| 500-case bootstrap | 100% | 72% | 0% | 100% | 74.5% | 0% |
+| 1,500-case calibrated SFT | 100% | 98% | 88.9% | 100% | 86.5% | 0% |
+
+The two remaining route errors are one `combined_tasks` case classified as
+`change_color` and the sole `customization` case classified as
+`replace_object`. The two missed searches are `Starbucks holiday cup` and
+`Japanese cherry blossom tree`, the same overall recall level as the released
+LoRA. These are development-regression results, not final held-out benchmark
+claims.
+
+For the 5K stage, stream 2K Ditto-combined plus 1K each of ROSE insertion,
+removal, and v2v. The current `datasets` release requires `.decode(False)` so
+the downloader reads encoded source MP4 bytes without installing `torchcodec`
+or decoding unused target videos. Teacher planning can then use the resumable
+batched runner:
+
+```bash
+python -m scripts.run_planner_teacher_vllm \
+  --cases /tmp/aurora-sft-5k/teacher_cases.jsonl \
+  --merged-model /tmp/aurora-agent-merged \
+  --out /tmp/aurora-sft-5k/teacher/agent_pipeline_records.jsonl \
+  --batch-size 8 --video-frames 6 --frame-max-side 448
+```
