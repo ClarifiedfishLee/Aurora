@@ -70,13 +70,16 @@ def compose(
     llama = []
     for item in manifest_rows:
         sample_id = str(item["sample_id"])
+        clean_instruction = str(item.get("clean_instruction") or "").strip()
+        if not clean_instruction:
+            continue
         teacher = teachers.get(sample_id)
         if teacher is None or not valid_plan(teacher.get("plan")):
             continue
         plan = dict(teacher["plan"])
-        plan["refined_text_instruction"] = item["clean_instruction"]
+        plan["refined_text_instruction"] = clean_instruction
         plan["subtask"] = _expected_subtask(item, str(plan["subtask"]))
-        raw_request = degrade_instruction(item["clean_instruction"], sample_id)
+        raw_request = degrade_instruction(clean_instruction, sample_id)
         target = json.dumps(plan, ensure_ascii=False, separators=(",", ":"))
         video_path = str(Path(teacher["video_path"]).resolve())
         canonical.append(

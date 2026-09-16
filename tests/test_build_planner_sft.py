@@ -40,6 +40,29 @@ class BuildPlannerSftTest(unittest.TestCase):
         self.assertEqual(len(llama[0]["messages"]), 2)
         self.assertEqual(llama[0]["videos"], [str(Path("/tmp/s1.mp4").resolve())])
 
+    def test_compose_skips_blank_instructions(self):
+        manifest = [
+            {
+                "sample_id": "blank",
+                "video_path": "videos/blank.mp4",
+                "clean_instruction": "  ",
+                "subset": "rose-insertion",
+            }
+        ]
+        teacher = [
+            {
+                "bench_id": "blank",
+                "video_path": "/tmp/blank.mp4",
+                "plan": {
+                    "refined_text_instruction": "Invented instruction.",
+                    "subtask": "add_object",
+                    "image_search": False,
+                    "mask": False,
+                },
+            }
+        ]
+        self.assertEqual(compose(manifest, teacher, "system"), ([], []))
+
 
 if __name__ == "__main__":
     unittest.main()

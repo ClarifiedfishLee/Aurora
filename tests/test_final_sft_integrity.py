@@ -137,6 +137,21 @@ class FinalSftIntegrityTest(unittest.TestCase):
         self.assertFalse(summary["hard_complete"])
         self.assertEqual(summary["hard_missing"], 1)
 
+    def test_extra_hard_data_requires_explicit_drop_and_is_reported(self):
+        canonical, base, hard = dataset(1)
+        extra = {**hard[0], "sample_id": "filtered-blank-source"}
+        rows, summary = assemble(
+            canonical,
+            base,
+            [*hard, extra],
+            search_count=0,
+            routing_count=0,
+            drop_unknown_hard=True,
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(summary["hard_extra_dropped"], 1)
+        self.assertEqual(summary["hard_extra_dropped_examples"], ["filtered-blank-source"])
+
     def test_uniform_source_indices_span_the_population(self):
         self.assertEqual(uniform_source_indices(8, 4), [1, 3, 5, 7])
         self.assertEqual(uniform_source_indices(8, 2), [2, 6])

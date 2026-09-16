@@ -118,6 +118,7 @@ def assemble(
     search_count: int,
     routing_count: int,
     require_complete_hard: bool = True,
+    drop_unknown_hard: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if not canonical:
         raise ValueError("canonical SFT data is empty")
@@ -128,8 +129,14 @@ def assemble(
         _validate_base_pair(canonical_row, llama_row, index)
     hard_by_id = _unique_rows_by_id(hard_metadata, "hard")
     unknown_hard_ids = sorted(set(hard_by_id) - set(canonical_by_id))
-    if unknown_hard_ids:
+    if unknown_hard_ids and not drop_unknown_hard:
         raise ValueError(f"hard metadata contains unknown sample_ids: {unknown_hard_ids[:5]}")
+    if unknown_hard_ids:
+        hard_by_id = {
+            sample_id: row
+            for sample_id, row in hard_by_id.items()
+            if sample_id in canonical_by_id
+        }
     missing_hard_ids = sorted(set(canonical_by_id) - set(hard_by_id))
     if require_complete_hard and missing_hard_ids:
         raise ValueError(f"hard metadata is missing sample_ids: {missing_hard_ids[:5]}")
@@ -169,11 +176,13 @@ def assemble(
         "hard_complete": not missing_hard_ids,
         "hard_missing": len(missing_hard_ids),
         "hard_missing_examples": missing_hard_ids[:20],
+        "hard_extra_dropped": len(unknown_hard_ids),
+        "hard_extra_dropped_examples": unknown_hard_ids[:20],
         "hard_quality_flags": {
-            "generated_true": sum(row.get("generated") is True for row in hard_metadata),
-            "generated_missing": sum("generated" not in row for row in hard_metadata),
-            "accepted_true": sum(row.get("accepted") is True for row in hard_metadata),
-            "accepted_missing": sum("accepted" not in row for row in hard_metadata),
+            "generated_true": sum(row.get("generated") is True for row in hard_by_id.values()),
+            "generated_missing": sum("generated" not in row for row in hard_by_id.values()),
+            "accepted_true": sum(row.get("accepted") is True for row in hard_by_id.values()),
+            "accepted_missing": sum("accepted" not in row for row in hard_by_id.values()),
         },
         "calibration_audit": _calibration_audit(calibration_metadata, len(base_llama)),
         "calibration_metadata": calibration_metadata,
@@ -203,6 +212,11 @@ def main() -> None:
         action="store_true",
         help="Permit missing hard-case rows; rejected or unknown rows still fail validation.",
     )
+    parser.add_argument(
+        "--drop-extra-hard",
+        action="store_true",
+        help="Drop hard rows whose source was filtered from canonical data and report them.",
+    )
     args = parser.parse_args()
     rows, summary = assemble(
         load_jsonl(args.canonical),
@@ -211,6 +225,7 @@ def main() -> None:
         args.search_count,
         args.routing_count,
         require_complete_hard=not args.allow_partial_hard,
+        drop_unknown_hard=args.drop_extra_hard,
     )
     write_jsonl(args.out, rows)
     write_summary(args.summary_out, summary)
