@@ -52,6 +52,16 @@ def normalize_sample(config: str, sample: dict[str, Any], video_path: str) -> di
     }
 
 
+def source_video_bytes(sample: dict[str, Any]) -> bytes | None:
+    """Return encoded source media without asking datasets to decode video."""
+    source = sample.get("source.mp4")
+    if isinstance(source, bytes):
+        return source
+    if isinstance(source, dict) and isinstance(source.get("bytes"), bytes):
+        return source["bytes"]
+    return None
+
+
 def stream_sources(specs: dict[str, int], out_dir: Path, seed: int, buffer_size: int) -> list[dict[str, Any]]:
     from datasets import load_dataset
 
@@ -69,14 +79,14 @@ def stream_sources(specs: dict[str, int], out_dir: Path, seed: int, buffer_size:
             continue
         dataset = load_dataset(
             "yeates/aurora-training-data", config, split="train", streaming=True
-        ).shuffle(seed=seed, buffer_size=buffer_size)
+        ).decode(False).shuffle(seed=seed, buffer_size=buffer_size)
         video_dir = out_dir / "videos" / config
         video_dir.mkdir(parents=True, exist_ok=True)
         for sample in dataset:
             sample_id = safe_id(config, str(sample["__key__"]))
             if sample_id in existing_ids:
                 continue
-            source_bytes = sample.get("source.mp4")
+            source_bytes = source_video_bytes(sample)
             if not isinstance(source_bytes, bytes) or not source_bytes:
                 continue
             destination = video_dir / f"{sample_id}.mp4"
