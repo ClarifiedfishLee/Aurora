@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 
-DATASET_NAME = "aurora_planner_sft"
+TRAIN_DATASET_NAME = "aurora_planner_sft_train"
+EVAL_DATASET_NAME = "aurora_planner_sft_eval"
 
 
 def validate_rows(rows: list[dict[str, Any]]) -> None:
@@ -27,12 +31,71 @@ def validate_rows(rows: list[dict[str, Any]]) -> None:
             raise FileNotFoundError(videos[0])
 
 
-def write_bundle(dataset_path: Path, model_path: str, output_dir: Path, config_path: Path) -> None:
+def grouped_split(
+    rows: list[dict[str, Any]], eval_ratio: float = 0.02
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    if not 0.0 < eval_ratio < 1.0:
+        raise ValueError("eval ratio must be between zero and one")
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        groups[str(row["videos"][0])].append(row)
+    if len(groups) < 2:
+        raise ValueError("grouped train/eval split requires at least two unique videos")
+    ordered_videos = sorted(
+        groups,
+        key=lambda video: hashlib.sha256(video.encode()).hexdigest(),
+    )
+    eval_group_count = min(len(groups) - 1, max(1, round(len(groups) * eval_ratio)))
+    eval_videos = set(ordered_videos[:eval_group_count])
+    train_rows = [row for row in rows if str(row["videos"][0]) not in eval_videos]
+    eval_rows = [row for row in rows if str(row["videos"][0]) in eval_videos]
+    summary = {
+        "train_rows": len(train_rows),
+        "eval_rows": len(eval_rows),
+        "train_videos": len(groups) - len(eval_videos),
+        "eval_videos": len(eval_videos),
+        "video_overlap": 0,
+    }
+    return train_rows, eval_rows, summary
+
+
+def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+
+def write_bundle(
+    dataset_path: Path,
+    model_path: str,
+    output_dir: Path,
+    config_path: Path,
+    eval_ratio: float = 0.02,
+) -> dict[str, Any]:
     rows = [json.loads(line) for line in dataset_path.read_text(encoding="utf-8").splitlines() if line]
     validate_rows(rows)
+    train_rows, eval_rows, split_summary = grouped_split(rows, eval_ratio=eval_ratio)
+    estimated_update_steps = max(1, math.ceil(len(train_rows) / 8))
+    checkpoint_steps = max(10, min(250, estimated_update_steps // 6))
+    train_path = dataset_path.with_name(f"{dataset_path.stem}_train.jsonl")
+    eval_path = dataset_path.with_name(f"{dataset_path.stem}_eval.jsonl")
+    _write_jsonl(train_path, train_rows)
+    _write_jsonl(eval_path, eval_rows)
     dataset_info = {
-        DATASET_NAME: {
-            "file_name": dataset_path.name,
+        TRAIN_DATASET_NAME: {
+            "file_name": train_path.name,
+            "formatting": "sharegpt",
+            "columns": {"messages": "messages", "system": "system", "videos": "videos"},
+            "tags": {
+                "role_tag": "role",
+                "content_tag": "content",
+                "user_tag": "user",
+                "assistant_tag": "assistant",
+            },
+        },
+        EVAL_DATASET_NAME: {
+            "file_name": eval_path.name,
             "formatting": "sharegpt",
             "columns": {"messages": "messages", "system": "system", "videos": "videos"},
             "tags": {
@@ -61,20 +124,22 @@ lora_dropout: 0.05
 lora_target: all
 
 ### dataset
-dataset: {DATASET_NAME}
+dataset: {TRAIN_DATASET_NAME}
+eval_dataset: {EVAL_DATASET_NAME}
 dataset_dir: {dataset_path.parent}
 template: qwen3_vl_nothink
 cutoff_len: 4096
-max_samples: {len(rows)}
+max_samples: {len(train_rows)}
 preprocessing_num_workers: 8
 dataloader_num_workers: 4
-val_size: 0.02
+val_size: 0.0
 
 ### output
 output_dir: {output_dir}
 logging_steps: 5
-save_steps: 100
-eval_steps: 50
+save_steps: {checkpoint_steps}
+save_total_limit: 2
+eval_steps: {checkpoint_steps}
 eval_strategy: steps
 plot_loss: true
 overwrite_output_dir: true
@@ -95,6 +160,12 @@ ddp_timeout: 180000000
 """
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(yaml, encoding="utf-8")
+    return {
+        **split_summary,
+        "train_dataset": str(train_path),
+        "eval_dataset": str(eval_path),
+        "checkpoint_steps": checkpoint_steps,
+    }
 
 
 def main() -> None:
@@ -103,9 +174,16 @@ def main() -> None:
     parser.add_argument("--model", required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--config-out", type=Path, required=True)
+    parser.add_argument("--eval-ratio", type=float, default=0.02)
     args = parser.parse_args()
-    write_bundle(args.dataset.resolve(), args.model, args.output_dir.resolve(), args.config_out.resolve())
-    print(json.dumps({"dataset": str(args.dataset), "config": str(args.config_out)}, indent=2))
+    summary = write_bundle(
+        args.dataset.resolve(),
+        args.model,
+        args.output_dir.resolve(),
+        args.config_out.resolve(),
+        eval_ratio=args.eval_ratio,
+    )
+    print(json.dumps({"dataset": str(args.dataset), "config": str(args.config_out), **summary}, indent=2))
 
 
 if __name__ == "__main__":
