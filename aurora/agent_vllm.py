@@ -60,6 +60,9 @@ class AgentVLMvLLM:
         self.processor = AutoProcessor.from_pretrained(str(merged_dir), trust_remote_code=True)
         self.llm = LLM(
             model=str(merged_dir), trust_remote_code=True, dtype="bfloat16",
+            max_model_len=8192,
+            gpu_memory_utilization=0.85,
+            enforce_eager=True,
             # Each sampled video frame is fed to vLLM as a still image (see
             # _generate_from_parts), so a single prompt holds video_frames +
             # reference images (plan) or candidate images (select_image). Size the
