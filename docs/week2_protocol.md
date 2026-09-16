@@ -213,22 +213,23 @@ complete. Retain the Devbox staging copy until local verification succeeds.
 
 ## 7. Day-14 agent-only gate
 
-Run the unchanged 100-case development regression with the final adapter, then
-score it with the same deterministic evaluator used for every earlier model:
+Run the unchanged 100-case development regression with the final adapter
+through the fail-fast wrapper:
 
 ```bash
-python -m aurora.agent \
-  --custom_cases_jsonl data/week1/planner_100.jsonl \
-  --custom_only --plan_only --mask_backend none \
-  --agent_base /mlx_devbox/users/jieyu.li/models/Qwen3-VL-8B-Instruct \
-  --agent_adapter /tmp/aurora-sft-5k/lora-final-12597-best-eval \
-  --out_dir /tmp/aurora-sft-5k/day14_gate
-
-python -m evaluation.agent_only_score \
-  --gold data/week1/planner_100.jsonl \
-  --predictions /tmp/aurora-sft-5k/day14_gate/agent_pipeline_records.jsonl \
-  --out /tmp/aurora-sft-5k/day14_gate/metrics.json
+HF_HOME=/tmp/aurora-hf-cache \
+.venv/bin/python scripts/run_day14_gate.py
 ```
+
+The wrapper first requires non-empty base-model and best-eval adapter files.
+It then checks that the planner log names those exact paths, rather than a
+silently downloaded fallback adapter. Before scoring, it requires exactly 100
+unique prediction IDs matching the gold set and zero per-case inference
+errors. It writes the raw records, planner/scorer logs, `metrics.json`, and a
+threshold-by-threshold `gate_summary.json` under
+`/tmp/aurora-sft-5k/day14_gate/`. Exit status 0 means pass, 2 means the run was
+complete but missed at least one criterion, and 1 means the run was aborted by
+a safety check.
 
 Pre-register the pass criteria before reading the final result: JSON validity
 at least 99%, routing accuracy at least 95%, search F1 at least 80%, mask F1 at
@@ -257,3 +258,42 @@ videos crossed with ten recurring request patterns. Seven of its ten external
 search entities and all ten weather rewrite targets also occur in training.
 Preference-data work begins only after this regression gate passes or the
 failure has been diagnosed and the SFT data corrected.
+
+## 8. Verify the final artifact bundle
+
+Store the complete trainer output, the selected best-eval adapter, training
+metadata, and Day-14 output in one portable tree:
+
+```text
+runs/week2/final_12597/
+├── lora-final-12597/
+├── lora-final-12597-best-eval/
+├── metadata/
+├── day14_gate/
+└── checksums.sha256
+```
+
+The complete trainer output retains the root adapter, logs, exit code, trainer
+state, and the newest resumable checkpoint with optimizer, scheduler, and RNG
+state. Metadata retains the final/all/train/eval JSONL files, dataset summary,
+LLaMA-Factory dataset registration, training YAML, and the source/teacher/hard
+request lineage files. Generate the manifest on the Worker-side bundle, then
+verify the same relative-path manifest after both transfer hops:
+
+```bash
+python -m scripts.verify_week2_bundle \
+  --root runs/week2/final_12597 \
+  --write-manifest runs/week2/final_12597/checksums.sha256 \
+  --audit
+
+python -m scripts.verify_week2_bundle \
+  --root runs/week2/final_12597 \
+  --verify-manifest runs/week2/final_12597/checksums.sha256 \
+  --audit
+```
+
+The audit verifies the 12,597 / 12,339 / 258 data counts, the 4,899 / 100
+source-video split with zero overlap, a successful training exit code, the
+best-eval selection record, a resumable checkpoint, and the complete 100-case
+gate result. Do not delete the Devbox staging copy until the local checksum and
+semantic audit both pass.
