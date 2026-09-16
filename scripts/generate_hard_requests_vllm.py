@@ -142,6 +142,33 @@ SEARCH_STOPWORDS = {
     "with",
 }
 
+MASK_STOPWORDS = SEARCH_STOPWORDS | {
+    "area",
+    "at",
+    "frame",
+    "from",
+    "in",
+    "located",
+    "of",
+    "on",
+    "scene",
+    "to",
+}
+
+CONSTRAINT_ALIASES = {
+    "big": "large",
+    "centered": "center",
+    "centred": "center",
+    "centrally": "center",
+    "centre": "center",
+    "golden": "gold",
+    "gray": "grey",
+    "metallic": "metal",
+    "middle": "center",
+    "under": "below",
+    "wood": "wooden",
+}
+
 COMBINED_ACTION_GROUPS = {
     "add": {"add", "attach", "hang", "insert", "mount", "place", "put"},
     "remove": {"clear", "delete", "erase", "get rid", "remove", "take away"},
@@ -194,7 +221,12 @@ def _contains_term(normalized_text: str, term: str) -> bool:
 def constraint_terms(text: str) -> set[str]:
     tokens = _tokens(text)
     protected = set().union(*PROTECTED_TERM_GROUPS)
-    terms = tokens & protected
+    terms = {CONSTRAINT_ALIASES.get(token, token) for token in tokens & protected}
+    terms.update(
+        canonical
+        for alias, canonical in CONSTRAINT_ALIASES.items()
+        if alias in tokens
+    )
     terms.update(re.findall(r"\b\d+(?:\.\d+)?\b", text.lower()))
     return terms
 
@@ -293,8 +325,19 @@ def validate_request(row: dict[str, Any], category: str, request: str) -> list[s
         errors.append("over_search_category_mismatch")
     if category == "multiple_constraints" and constraint_group_count(source) < 2:
         errors.append("insufficient_source_constraints")
-    if category == "mask_granularity" and not _enabled(plan.get("mask")):
-        errors.append("mask_category_mismatch")
+    if category == "pronoun_grounding" and not re.search(
+        r"\b(?:it|this|that|this one|that one|the one)\b", request.lower()
+    ):
+        errors.append("missing_grounding_pronoun")
+    if category == "mask_granularity":
+        mask = plan.get("mask")
+        if not _enabled(mask):
+            errors.append("mask_category_mismatch")
+        elif isinstance(mask, str):
+            mask_terms = _tokens(mask) - MASK_STOPWORDS
+            overlap = mask_terms & _tokens(request)
+            if mask_terms and len(overlap) / len(mask_terms) < 0.4:
+                errors.append("insufficient_mask_detail")
     if category == "compositional_edit" and subtask != "combined_tasks":
         errors.append("composition_category_mismatch")
     return errors

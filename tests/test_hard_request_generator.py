@@ -9,6 +9,7 @@ from scripts.generate_hard_requests_vllm import (
     completed_ids,
     load_resumable_jsonl,
     stratified_rows,
+    validate_request,
 )
 
 
@@ -106,6 +107,42 @@ class HardRequestGeneratorTest(unittest.TestCase):
             path.write_text("not-json\n{}\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "record 1"):
                 load_resumable_jsonl(path)
+
+    def test_constraint_validation_accepts_safe_synonyms(self):
+        row = {
+            "raw_user_request": "put the golden wooden sign in the center",
+            "target_plan": {
+                "subtask": "add_object",
+                "image_search": False,
+                "mask": False,
+            },
+        }
+        self.assertEqual(
+            validate_request(row, "rewrite_preservation", "add the gold wood sign in the middle"),
+            [],
+        )
+
+    def test_pronoun_and_mask_categories_require_their_hard_signal(self):
+        pronoun_row = {
+            "raw_user_request": "put the red sign on the left wall",
+            "target_plan": {"subtask": "add_object", "image_search": False, "mask": False},
+        }
+        self.assertIn(
+            "missing_grounding_pronoun",
+            validate_request(pronoun_row, "pronoun_grounding", "add the red sign on the left wall"),
+        )
+        mask_row = {
+            "raw_user_request": "remove the small red striped cup on the left table",
+            "target_plan": {
+                "subtask": "remove_object",
+                "image_search": False,
+                "mask": "small red striped cup on the left table",
+            },
+        }
+        self.assertIn(
+            "insufficient_mask_detail",
+            validate_request(mask_row, "mask_granularity", "remove it from the left"),
+        )
 
 
 if __name__ == "__main__":
