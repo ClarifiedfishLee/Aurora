@@ -4,10 +4,17 @@ Status: initial 100-case development regression completed on one A100-SXM4-80GB.
 These are engineering baseline results, not final Mini-AgentEdit benchmark
 numbers, because the suite deliberately reuses the ten smoke-test videos.
 
-| Model | JSON validity | Routing accuracy | Search F1 | Mask F1 | Source-entity false search | Lexical constraint retention | Time |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Base Qwen3-VL-8B | 100% | 76% | 39.2% | 90.9% | 34.4% | 64% | 271.5 s |
-| Aurora released LoRA | 100% | 78% | 88.9% | 100% | 0% | 48% | 266.3 s |
+| Model | Runtime JSON | Strict raw JSON | Routing accuracy | Search F1 | Mask F1 | Source-entity false search | Lexical constraint retention | Time |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Base Qwen3-VL-8B | 100% | 100% | 76% | 39.2% | 90.9% | 34.4% | 64% | 271.5 s |
+| Aurora released LoRA | 100% | 100% | 78% | 88.9% | 100% | 0% | 48% | 266.3 s |
+
+Runtime validity is measured after Aurora normalizes a plan; strict raw
+validity parses the complete model response and enforces the exact four-field
+contract. A later audit also checked the value of every triggered positive
+search query against pre-registered entity aliases. Both models were 100%
+correct conditional on triggering; end-to-end valid-query recall was 100% for
+Base and 80% for the released LoRA because the latter missed two searches.
 
 The strongest released-LoRA gain is tool discipline. The base model searched
 on 31 of 90 cases whose gold plan was self-contained, while the LoRA made zero
