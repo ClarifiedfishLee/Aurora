@@ -242,6 +242,12 @@ parses the complete `agent_raw` response and enforces the exact four-field
 contract without Aurora's cleanup. The latter is the appropriate measure of
 whether the model itself learned structured output.
 
+Also report `image_search_query.conditional_accuracy` and
+`image_search_query.end_to_end_recall`. These use explicit, pre-registered
+entity aliases for the ten positive search cases, so a triggered but unrelated
+query cannot receive credit. Treat them as diagnostics rather than a new kill
+threshold because the positive sample is small and entity-overlaps training.
+
 Record the result next to the historical 500/1,500 rows, but do not treat this
 reused development suite as the final held-out benchmark. Its videos and raw
 requests have zero exact overlap with the v2 training data, but it is only ten
