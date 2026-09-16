@@ -131,15 +131,33 @@ def make_record(source: dict[str, Any], request: str, plan: dict[str, Any]) -> d
     }
 
 
+def uniform_source_indices(population_size: int, count: int) -> list[int]:
+    """Select deterministic, evenly spaced source rows across the full population."""
+    if population_size < 1:
+        raise ValueError("source population must be positive")
+    if count < 0:
+        raise ValueError("augmentation count cannot be negative")
+    if count == 0:
+        return []
+    return [
+        min(population_size - 1, ((2 * index + 1) * population_size) // (2 * count))
+        for index in range(count)
+    ]
+
+
 def build_augmented(
     base_rows: list[dict[str, Any]], search_count: int, routing_count: int
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     if not base_rows:
         raise ValueError("base SFT data is empty")
+    if search_count < 0 or routing_count < 0:
+        raise ValueError("augmentation counts cannot be negative")
     llama_rows = list(base_rows)
     metadata: list[dict[str, Any]] = []
-    for index in range(search_count):
-        source = base_rows[index % len(base_rows)]
+    search_source_indices = uniform_source_indices(len(base_rows), search_count)
+    routing_source_indices = uniform_source_indices(len(base_rows), routing_count)
+    for index, source_index in enumerate(search_source_indices):
+        source = base_rows[source_index]
         entity = EXTERNAL_ENTITIES[index % len(EXTERNAL_ENTITIES)]
         if index % 2 == 0:
             request = f"put a {entity} to the right of the main subject"
@@ -156,9 +174,16 @@ def build_augmented(
             "mask": False,
         }
         llama_rows.append(make_record(source, request, plan))
-        metadata.append({"category": "under_search", "source_index": index % len(base_rows), "request": request, "target_plan": plan})
-    for index in range(routing_count):
-        source = base_rows[(search_count + index) % len(base_rows)]
+        metadata.append(
+            {
+                "category": "under_search",
+                "source_index": source_index,
+                "request": request,
+                "target_plan": plan,
+            }
+        )
+    for index, source_index in enumerate(routing_source_indices):
+        source = base_rows[source_index]
         request, refined, subtask, mask = ROUTING_TEMPLATES[index % len(ROUTING_TEMPLATES)]
         plan = {
             "refined_text_instruction": refined,
@@ -167,7 +192,14 @@ def build_augmented(
             "mask": mask,
         }
         llama_rows.append(make_record(source, request, plan))
-        metadata.append({"category": "routing_calibration", "source_index": (search_count + index) % len(base_rows), "request": request, "target_plan": plan})
+        metadata.append(
+            {
+                "category": "routing_calibration",
+                "source_index": source_index,
+                "request": request,
+                "target_plan": plan,
+            }
+        )
     return llama_rows, metadata
 
 
