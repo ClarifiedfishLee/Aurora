@@ -137,7 +137,7 @@ class AgentVLMvLLM:
         ref_images: list[Image.Image] | None = None,
     ) -> tuple[dict[str, Any], str]:
         content = self._plan_content(instruction, video, ref_images)
-        raw = self._generate_from_parts(content, max_new_tokens=320)
+        raw = self._generate_from_parts(content, max_new_tokens=max(320, self.max_new_tokens))
         return normalize_plan(parse_json_object(raw)), raw
 
     def plan_batch(
@@ -146,7 +146,7 @@ class AgentVLMvLLM:
     ) -> list[tuple[dict[str, Any], str]]:
         """Plan several independent cases in one vLLM scheduler call."""
         requests = [self._request_from_parts(self._plan_content(*item)) for item in items]
-        sampling = self._SamplingParams(temperature=0.0, max_tokens=320)
+        sampling = self._SamplingParams(temperature=0.0, max_tokens=max(320, self.max_new_tokens))
         outputs = self.llm.generate(requests, sampling)
         results = []
         for output in outputs:

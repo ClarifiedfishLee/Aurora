@@ -54,7 +54,7 @@ def main() -> None:
     pending = [case for case in cases if str(case["bench_id"]) not in done]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     print(json.dumps({"total": len(cases), "completed": len(done), "pending": len(pending)}), flush=True)
-    agent = AgentVLMvLLM(args.merged_model, max_images=args.video_frames + 2)
+    agent = AgentVLMvLLM(args.merged_model, max_new_tokens=640, max_images=args.video_frames + 2)
     with args.out.open("a", encoding="utf-8") as handle:
         for start in range(0, len(pending), args.batch_size):
             batch = pending[start : start + args.batch_size]
