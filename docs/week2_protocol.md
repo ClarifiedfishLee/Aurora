@@ -228,7 +228,16 @@ final model must also show a clear improvement over the released Aurora LoRA
 in both routing and retention; meeting only the absolute thresholds is not
 sufficient. Do not revise these thresholds after seeing the result.
 
+Report both validity fields emitted by the evaluator. `json_validity` measures
+the normalized runtime plan that Aurora can execute; `strict_raw_json_validity`
+parses the complete `agent_raw` response and enforces the exact four-field
+contract without Aurora's cleanup. The latter is the appropriate measure of
+whether the model itself learned structured output.
+
 Record the result next to the historical 500/1,500 rows, but do not treat this
-reused development suite as the final held-out benchmark. Preference-data work
-begins only after this gate passes or the failure has been diagnosed and the
-SFT data corrected.
+reused development suite as the final held-out benchmark. Its videos and raw
+requests have zero exact overlap with the v2 training data, but it is only ten
+videos crossed with ten recurring request patterns. Seven of its ten external
+search entities and all ten weather rewrite targets also occur in training.
+Preference-data work begins only after this regression gate passes or the
+failure has been diagnosed and the SFT data corrected.
