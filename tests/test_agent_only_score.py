@@ -1,10 +1,43 @@
 import json
 import unittest
 
-from evaluation.agent_only_score import score
+from evaluation.agent_only_score import extract_strict_raw_plan, score, valid_plan
 
 
 class AgentOnlyScoreTest(unittest.TestCase):
+    def test_strict_raw_parser_rejects_duplicate_and_nonfinite_json(self) -> None:
+        valid_raw = (
+            '{"refined_text_instruction":"Remove the cup.",'
+            '"subtask":"remove_object","image_search":false,"mask":"cup"}'
+        )
+        parsed = extract_strict_raw_plan({"agent_raw": valid_raw})
+        self.assertTrue(valid_plan(parsed))
+
+        duplicate = (
+            '{"refined_text_instruction":"Remove the cup.",'
+            '"subtask":"remove_object","subtask":"add_object",'
+            '"image_search":false,"mask":"cup"}'
+        )
+        self.assertIsNone(extract_strict_raw_plan({"agent_raw": duplicate}))
+
+        nested_duplicate = (
+            '{"refined_text_instruction":"Remove the cup.",'
+            '"subtask":"remove_object","image_search":false,"mask":"cup",'
+            '"metadata":{"value":1,"value":2}}'
+        )
+        self.assertIsNone(
+            extract_strict_raw_plan({"agent_raw": nested_duplicate})
+        )
+
+        for constant in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(constant=constant):
+                raw = (
+                    '{"refined_text_instruction":"Remove the cup.",'
+                    '"subtask":"remove_object","image_search":false,'
+                    f'"mask":{constant}}}'
+                )
+                self.assertIsNone(extract_strict_raw_plan({"agent_raw": raw}))
+
     def test_scores_validity_triggers_routing_and_constraints(self) -> None:
         gold = [
             {

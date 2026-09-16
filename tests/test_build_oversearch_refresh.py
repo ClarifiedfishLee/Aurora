@@ -1,15 +1,20 @@
 import json
 import unittest
 from collections import Counter
+from unittest.mock import patch
 
+import scripts.build_oversearch_refresh as refresh_builder
 from evaluation.agent_only_score import constraint_is_retained, valid_plan
 from scripts.augment_planner_sft import EXTERNAL_ENTITY_GROUPS
 from scripts.build_oversearch_refresh import (
+    DEFAULT_FORBIDDEN_NGRAM_N,
     DEFAULT_FORBIDDEN_CONCEPTS,
+    RECIPE_VERSION,
     SUBTASK_ORDER,
     TRAIN_CATEGORY_COUNTS,
     VALIDATION_CATEGORY_COUNTS,
     build_refresh,
+    paired_prompt_target_ngram_overlap,
 )
 
 
@@ -125,13 +130,22 @@ class BuildOversearchRefreshTest(unittest.TestCase):
         cls.base_train, cls.base_eval = fixture_rows()
         cls.forbidden_cases = [
             {
+                "bench_id": "fixture_forbidden_entity",
                 "prompt": "a held-out gate sentence that must never appear",
                 "gold_plan": plan(
                     "Use the held-out proper entity.",
                     "replace_object",
                     search="Held-Out Proper Entity",
                 ),
-            }
+            },
+            {
+                "bench_id": "fixture_forbidden_weather",
+                "prompt": "make it lightly snowing but keep everything visible",
+                "gold_plan": plan(
+                    "Change the weather to light snowfall while keeping every subject clearly visible.",
+                    "change_weather",
+                ),
+            },
         ]
         (
             cls.train,
@@ -146,6 +160,7 @@ class BuildOversearchRefreshTest(unittest.TestCase):
         )
 
     def test_exact_recipe_counts_and_sharegpt_contract(self) -> None:
+        self.assertEqual(self.summary["recipe_version"], RECIPE_VERSION)
         self.assertEqual((len(self.train), len(self.validation)), (1024, 256))
         self.assertEqual((len(self.cases), len(self.gold)), (256, 256))
         self.assertEqual(
@@ -205,6 +220,78 @@ class BuildOversearchRefreshTest(unittest.TestCase):
             self.summary["forbidden_audit"]["exact_prompt_overlap"], 0
         )
         self.assertEqual(self.summary["forbidden_audit"]["phrase_hit_count"], 0)
+        ngram_audit = self.summary["forbidden_audit"][
+            "synthetic_prompt_target_ngram_overlap"
+        ]
+        self.assertEqual(ngram_audit["n"], DEFAULT_FORBIDDEN_NGRAM_N)
+        self.assertEqual(ngram_audit["generated_rows_checked"], 448)
+        self.assertEqual(ngram_audit["forbidden_cases_checked"], 2)
+        self.assertEqual(ngram_audit["hit_count"], 0)
+        self.assertEqual(ngram_audit["hits"], [])
+
+    def test_old_weather_prompt_and_target_collision_is_caught(self) -> None:
+        overlap = paired_prompt_target_ngram_overlap(
+            "make the weather soft drifting snow but keep everything visible",
+            (
+                "Change the weather to soft drifting snow while keeping every "
+                "subject visible and preserving the original action."
+            ),
+            "make it lightly snowing but keep everything visible",
+            (
+                "Change the weather to light snowfall while keeping every "
+                "subject clearly visible."
+            ),
+        )
+        self.assertIn("but keep everything visible", overlap["prompt_ngrams"])
+        self.assertIn("while keeping every subject", overlap["target_ngrams"])
+
+    def test_recipe_v2_weather_templates_are_disjoint(self) -> None:
+        forbidden_prompt = "make it lightly snowing but keep everything visible"
+        forbidden_target = (
+            "Change the weather to light snowfall while keeping every subject clearly visible."
+        )
+        for validation in (False, True):
+            generated_prompt, generated_target = refresh_builder._ordinary_text(
+                "change_weather", "soft drifting snow", validation=validation
+            )
+            self.assertEqual(
+                paired_prompt_target_ngram_overlap(
+                    generated_prompt,
+                    generated_target,
+                    forbidden_prompt,
+                    forbidden_target,
+                ),
+                {"prompt_ngrams": [], "target_ngrams": []},
+            )
+
+    def test_generation_fails_on_paired_forbidden_ngram_hit(self) -> None:
+        ordinary_text = refresh_builder._ordinary_text
+
+        def colliding_ordinary_text(subtask: str, target: str, *, validation: bool):
+            if subtask == "change_weather":
+                return (
+                    f"make the weather {target} but keep everything visible",
+                    (
+                        f"Change the weather to {target} while keeping every subject "
+                        "visible and preserving the original action."
+                    ),
+                )
+            return ordinary_text(subtask, target, validation=validation)
+
+        with patch.object(
+            refresh_builder,
+            "_ordinary_text",
+            side_effect=colliding_ordinary_text,
+        ):
+            with self.assertRaisesRegex(
+                AssertionError,
+                "forbidden synthetic prompt/target n-gram overlap",
+            ):
+                build_refresh(
+                    self.base_train,
+                    self.base_eval,
+                    forbidden_case_rows=self.forbidden_cases,
+                )
 
     def test_validation_gold_matches_cases_and_has_search_aliases(self) -> None:
         self.assertEqual([row["bench_id"] for row in self.cases], [row["bench_id"] for row in self.gold])

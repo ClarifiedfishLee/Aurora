@@ -6,7 +6,7 @@ training examples only borrow videos from the original training split, while
 validation examples only borrow videos from the original evaluation split.
 Synthetic concepts and prompt templates are also split before construction.
 
-The fixed output recipe is:
+The fixed v2 output recipe is:
 
 * train (1,024): 256 no-search counterexamples + 768 replay examples;
 * validation (256): 64 no-search targets + 64 true-search targets +
@@ -22,18 +22,20 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 from collections import Counter, defaultdict
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any
 
-from evaluation.agent_only_score import PLAN_FIELDS, SUBTASKS, normalize, valid_plan
+from evaluation.agent_only_score import PLAN_FIELDS, normalize, valid_plan
 from scripts.augment_planner_sft import EXTERNAL_ENTITY_GROUPS, ROUTING_TEMPLATES
 
 
 TRAIN_SIZE = 1_024
 VALIDATION_SIZE = 256
+RECIPE_VERSION = 2
+DEFAULT_FORBIDDEN_NGRAM_N = 4
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FORBIDDEN_CASE_PATH = REPO_ROOT / "data/week1/planner_100.jsonl"
 
@@ -474,9 +476,14 @@ def _ordinary_text(subtask: str, target: str, *, validation: bool) -> tuple[str,
             f"Change only the main object to {target} while preserving its material, the background, and all motion.",
         )
     if subtask == "change_weather":
+        if validation:
+            return (
+                f"bring in {target} weather without veiling the activity",
+                f"Introduce {target} weather. Keep the ongoing activity unobstructed from view.",
+            )
         return (
-            f"shift the weather to {target} without hiding the scene" if validation else f"make the weather {target} but keep everything visible",
-            f"Change the weather to {target} while keeping every subject visible and preserving the original action.",
+            f"dial in {target} conditions, leaving the action unobscured",
+            f"Establish {target} atmospheric conditions. Maintain an unobstructed view of the ongoing action.",
         )
     if subtask == "add_effect":
         return (
@@ -864,6 +871,126 @@ def _build_validation_routes(sources: Sequence[ParsedRow]) -> list[BuiltRow]:
     return built
 
 
+def _text_ngrams(text: str, n: int) -> set[str]:
+    if n < 1:
+        raise ValueError(f"n-gram size must be positive, got {n}")
+    tokens = normalize(text).split()
+    return {
+        " ".join(tokens[index : index + n])
+        for index in range(len(tokens) - n + 1)
+    }
+
+
+def paired_prompt_target_ngram_overlap(
+    generated_prompt: str,
+    generated_target: str,
+    forbidden_prompt: str,
+    forbidden_target: str,
+    *,
+    n: int = DEFAULT_FORBIDDEN_NGRAM_N,
+) -> dict[str, list[str]]:
+    """Return aligned prompt/target overlaps for one generated/gate pair.
+
+    A near-duplicate template is actionable only when both its input prompt and
+    its output target overlap the same forbidden case.  Requiring the paired
+    signal avoids rejecting harmless shared planner boilerplate such as
+    ``change the background to`` when the user-facing templates are unrelated.
+    """
+
+    return {
+        "prompt_ngrams": sorted(
+            _text_ngrams(generated_prompt, n) & _text_ngrams(forbidden_prompt, n)
+        ),
+        "target_ngrams": sorted(
+            _text_ngrams(generated_target, n) & _text_ngrams(forbidden_target, n)
+        ),
+    }
+
+
+def _forbidden_synthetic_ngram_audit(
+    generated_by_split: Sequence[tuple[str, Sequence[BuiltRow]]],
+    forbidden_case_rows: Sequence[dict[str, Any]],
+    *,
+    n: int,
+) -> dict[str, Any]:
+    """Audit generated synthetic rows only; inherited replay is excluded."""
+
+    if n < 1:
+        raise ValueError(f"forbidden n-gram size must be positive, got {n}")
+
+    forbidden: list[dict[str, Any]] = []
+    for index, row in enumerate(forbidden_case_rows, 1):
+        prompt = row.get("prompt")
+        gold_plan = row.get("gold_plan")
+        target = gold_plan.get("refined_text_instruction") if isinstance(gold_plan, dict) else None
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError(f"forbidden case {index}: missing raw prompt")
+        if not isinstance(target, str) or not target.strip():
+            raise ValueError(f"forbidden case {index}: missing gold refined instruction")
+        forbidden.append(
+            {
+                "index": index,
+                "bench_id": str(row.get("bench_id", f"forbidden_{index:04d}")),
+                "prompt": prompt,
+                "target": target,
+                "prompt_ngrams": _text_ngrams(prompt, n),
+                "target_ngrams": _text_ngrams(target, n),
+            }
+        )
+
+    hits: list[dict[str, Any]] = []
+    generated_count = 0
+    for split, items in generated_by_split:
+        for generated_index, item in enumerate(items, 1):
+            generated_count += 1
+            parsed = parse_rows([item.row], f"{split} synthetic n-gram audit")[0]
+            generated_target = str(parsed.plan["refined_text_instruction"])
+            generated_prompt_ngrams = _text_ngrams(parsed.prompt, n)
+            generated_target_ngrams = _text_ngrams(generated_target, n)
+            for gate in forbidden:
+                overlap = {
+                    "prompt_ngrams": sorted(
+                        generated_prompt_ngrams & gate["prompt_ngrams"]
+                    ),
+                    "target_ngrams": sorted(
+                        generated_target_ngrams & gate["target_ngrams"]
+                    ),
+                }
+                if not overlap["prompt_ngrams"] or not overlap["target_ngrams"]:
+                    continue
+                hits.append(
+                    {
+                        "generated_split": split,
+                        "generated_index": generated_index,
+                        "generated_category": item.category,
+                        "generated_concept_id": item.concept_id,
+                        "generated_template_id": item.template_id,
+                        "forbidden_index": gate["index"],
+                        "forbidden_bench_id": gate["bench_id"],
+                        **overlap,
+                        "generated_prompt": parsed.prompt,
+                        "generated_target": generated_target,
+                        "forbidden_prompt": gate["prompt"],
+                        "forbidden_target": gate["target"],
+                    }
+                )
+
+    hits.sort(
+        key=lambda hit: (
+            hit["generated_split"],
+            hit["generated_index"],
+            hit["forbidden_index"],
+        )
+    )
+    return {
+        "n": n,
+        "generated_rows_checked": generated_count,
+        "forbidden_cases_checked": len(forbidden),
+        "hit_count": len(hits),
+        "hits": hits,
+    }
+
+
 def _forbidden_from_cases(rows: Sequence[dict[str, Any]]) -> tuple[set[str], set[str]]:
     prompts: set[str] = set()
     concepts = set(DEFAULT_FORBIDDEN_CONCEPTS)
@@ -961,6 +1088,7 @@ def build_refresh(
     eval_rows: Sequence[dict[str, Any]],
     *,
     forbidden_case_rows: Sequence[dict[str, Any]] | None = None,
+    forbidden_ngram_n: int = DEFAULT_FORBIDDEN_NGRAM_N,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     """Build refresh train/validation rows, validation cases/gold, and an audit summary."""
     if forbidden_case_rows is None:
@@ -1002,6 +1130,26 @@ def build_refresh(
     ]
     validation_search = _build_validation_search(eval_source)
     validation_routes = _build_validation_routes(eval_source)
+    synthetic_ngram_audit = _forbidden_synthetic_ngram_audit(
+        (
+            ("train", train_synthetic),
+            (
+                "validation",
+                [*validation_synthetic, *validation_search, *validation_routes],
+            ),
+        ),
+        forbidden_case_rows,
+        n=forbidden_ngram_n,
+    )
+    if synthetic_ngram_audit["hit_count"]:
+        raise AssertionError(
+            "forbidden synthetic prompt/target n-gram overlap: "
+            + json.dumps(
+                synthetic_ngram_audit["hits"][:5],
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
     validation_seed = [*validation_synthetic, *validation_search, *validation_routes]
     validation_seed_concepts = {item.concept_id for item in validation_seed}
     replay_exclusions = (*forbidden_concepts, *sorted(validation_seed_concepts))
@@ -1118,7 +1266,7 @@ def build_refresh(
         "\n".join(sorted(normalize(value) for value in forbidden_concepts)).encode("utf-8")
     ).hexdigest()
     summary = {
-        "recipe_version": 1,
+        "recipe_version": RECIPE_VERSION,
         "input": {
             "train_rows": len(train_source),
             "eval_rows": len(eval_source),
@@ -1181,6 +1329,7 @@ def build_refresh(
             "exact_prompt_count": len(forbidden_prompts),
             "exact_prompt_overlap": 0,
             "phrase_hit_count": 0,
+            "synthetic_prompt_target_ngram_overlap": synthetic_ngram_audit,
         },
     }
     return train_output, validation_output, cases, gold, summary
@@ -1201,6 +1350,15 @@ def main() -> None:
         default=DEFAULT_FORBIDDEN_CASE_PATH,
         help="Optional gate/case JSONL whose exact prompts and search entities must be excluded.",
     )
+    parser.add_argument(
+        "--forbidden-ngram-n",
+        type=int,
+        default=DEFAULT_FORBIDDEN_NGRAM_N,
+        help=(
+            "Reject generated synthetic rows whose prompt and target both share "
+            "an aligned n-gram with one forbidden case (default: 4)."
+        ),
+    )
     args = parser.parse_args()
 
     forbidden_rows = load_jsonl(args.forbidden_cases)
@@ -1208,6 +1366,7 @@ def main() -> None:
         load_jsonl(args.base_train),
         load_jsonl(args.base_eval),
         forbidden_case_rows=forbidden_rows,
+        forbidden_ngram_n=args.forbidden_ngram_n,
     )
     write_jsonl(args.train_out, train)
     write_jsonl(args.validation_out, validation)

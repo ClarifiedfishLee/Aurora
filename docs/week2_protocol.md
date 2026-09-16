@@ -259,41 +259,355 @@ search entities and all ten weather rewrite targets also occur in training.
 Preference-data work begins only after this regression gate passes or the
 failure has been diagnosed and the SFT data corrected.
 
-## 8. Verify the final artifact bundle
+## 8. Preserve refresh1 as a failed correction
 
-Store the complete trainer output, the selected best-eval adapter, training
-metadata, and Day-14 output in one portable tree:
+The first bounded refresh is a result, not the final adapter. Its checkpoint
+was selected only by refresh-validation loss, after which the unchanged
+Day-14 regression was run once. It corrected the targeted false-search
+behaviour but failed the pre-registered strict retention thresholds.
 
-```text
-runs/week2/final_12597/
-├── lora-final-12597/
-├── lora-final-12597-best-eval/
-├── metadata/
-├── day14_gate/
-└── checksums.sha256
+The failure was traced to a data-template collision. Ten generated weather
+rows used the same raw-request and target skeleton as the ten recurring snow
+cases in Day-14. The generated target phrase `keeping every subject visible`
+displaced the gate's literal `clearly visible` constraint. Exact prompt,
+concept, and template-ID checks had not detected this shared lexical skeleton.
+Do not relabel this run as passing, discard its artifacts, or select another
+checkpoint using the observed Day-14 result. Preserve its data, four
+checkpoints, eval-loss selection, and failing gate output under the immutable
+refresh1 run directory.
+
+## 9. Run the recipe2 correction without reusing Day-14 for selection
+
+Recipe2 keeps the fixed 1,024/256 composition but changes the colliding
+weather templates and adds a paired prompt/target forbidden 4-gram audit. A
+synthetic row is rejected when both its user prompt and refined target share a
+4-gram with the same Day-14 case. Replay rows are excluded from this new
+synthetic-template audit because they are inherited rather than generated.
+The previous source-video, normalized-prompt, concept, template, contract, and
+forbidden-phrase checks remain active.
+
+Generate recipe2 into a fresh directory; never overwrite refresh1:
+
+```bash
+python -m scripts.build_oversearch_refresh \
+  --base-train /tmp/aurora-sft-5k/sft_final_12597_v2_train.jsonl \
+  --base-eval /tmp/aurora-sft-5k/sft_final_12597_v2_eval.jsonl \
+  --train-out /tmp/aurora-sft-refresh-recipe2/refresh_train.jsonl \
+  --validation-out /tmp/aurora-sft-refresh-recipe2/refresh_eval.jsonl \
+  --cases-out /tmp/aurora-sft-refresh-recipe2/refresh_cases.jsonl \
+  --gold-out /tmp/aurora-sft-refresh-recipe2/refresh_gold.jsonl \
+  --summary-out /tmp/aurora-sft-refresh-recipe2/refresh_generation_audit.json \
+  --forbidden-cases data/week1/planner_100.jsonl \
+  --forbidden-ngram-n 4
 ```
 
-The complete trainer output retains the root adapter, logs, exit code, trainer
-state, and the newest resumable checkpoint with optimizer, scheduler, and RNG
-state. Metadata retains the final/all/train/eval JSONL files, dataset summary,
-LLaMA-Factory dataset registration, training YAML, and the source/teacher/hard
-request lineage files. Generate the manifest on the Worker-side bundle, then
-verify the same relative-path manifest after both transfer hops:
+Require `recipe_version: 2`, a zero synthetic 4-gram hit count, and all other
+isolation checks in `refresh_generation_audit.json` before allocating the GPU.
+Build and train the continuation from the already selected v2 adapter:
+
+```bash
+python -m scripts.make_llamafactory_refresh_config build \
+  --train /tmp/aurora-sft-refresh-recipe2/refresh_train.jsonl \
+  --eval /tmp/aurora-sft-refresh-recipe2/refresh_eval.jsonl \
+  --model /mlx_devbox/users/jieyu.li/models/Qwen3-VL-8B-Instruct \
+  --adapter /tmp/aurora-sft-5k/lora-final-12597-best-eval \
+  --output-dir /tmp/aurora-sft-refresh-recipe2/lora-refresh \
+  --config-out /tmp/aurora-sft-refresh-recipe2/train_refresh.yaml \
+  --policy-out /tmp/aurora-sft-refresh-recipe2/refresh_selection_policy.json
+
+HF_HOME=/tmp/llamafactory-hf-cache \
+/tmp/llamafactory-venv/bin/llamafactory-cli train \
+  /tmp/aurora-sft-refresh-recipe2/train_refresh.yaml
+
+python -m scripts.make_llamafactory_refresh_config select \
+  --output-dir /tmp/aurora-sft-refresh-recipe2/lora-refresh \
+  --policy /tmp/aurora-sft-refresh-recipe2/refresh_selection_policy.json \
+  --selection-out /tmp/aurora-sft-refresh-recipe2/refresh_selection.json
+```
+
+The continuation still evaluates and saves at steps 32, 64, 96, and 128. The
+selector requires all four checkpoints, chooses the lowest `refresh_eval`
+loss, breaks a tie toward the earliest step, and rejects any policy that
+allows an external gate metric. Materialize `lora-refresh-selected/` from that
+checkpoint and verify that its adapter config and weights hash exactly match
+the selected checkpoint. This portable snapshot is the pre-registered
+`recipe2` primary candidate; no Day-14 output may influence this choice.
+
+## 10. Seal the fresh-384 validation bundle and decision policy
+
+Model selection uses 384 newly streamed, distinct source videos rather than
+the reused Day-14 suite. The locked allocation is 128 no-search negatives (64
+generic style, 32 generic background, and 32 ordinary targets), 64 true-search
+positives, 64 routing controls, 64 mask controls, and 64 rewrite-retention
+cases. Each rewrite case carries four literal constraints.
+
+The builder rejects source overlap by sample ID, basename, and encoded-video
+SHA-256; audits earlier v2 and refresh1 corpora; and uses the Day-14 case file
+only as an exclusion input. Run it once after the recipe2 adapter hash is
+known, before any candidate inference:
+
+```bash
+V2_ADAPTER=/tmp/aurora-sft-5k/lora-final-12597-best-eval
+REFRESH1_ADAPTER=/tmp/aurora-sft-refresh/lora-refresh-selected
+RECIPE2_ADAPTER=/tmp/aurora-sft-refresh-recipe2/lora-refresh-selected
+V2_SHA=$(sha256sum "$V2_ADAPTER/adapter_model.safetensors" | cut -d' ' -f1)
+REFRESH1_SHA=$(sha256sum "$REFRESH1_ADAPTER/adapter_model.safetensors" | cut -d' ' -f1)
+RECIPE2_SHA=$(sha256sum "$RECIPE2_ADAPTER/adapter_model.safetensors" | cut -d' ' -f1)
+
+python -m scripts.build_interpolation_validation \
+  --source-manifest /tmp/aurora-interp-sources/manifest.jsonl \
+  --source-root /tmp/aurora-interp-sources \
+  --v2-train /tmp/aurora-sft-5k/sft_final_12597_v2_train.jsonl \
+  --v2-eval /tmp/aurora-sft-5k/sft_final_12597_v2_eval.jsonl \
+  --refresh1-train /tmp/aurora-sft-refresh/refresh_train.jsonl \
+  --refresh1-eval /tmp/aurora-sft-refresh/refresh_eval.jsonl \
+  --day14-cases data/week1/planner_100.jsonl \
+  --cases-out /tmp/aurora-interpolation-validation-v4/cases.jsonl \
+  --gold-out /tmp/aurora-interpolation-validation-v4/gold.jsonl \
+  --audit-out /tmp/aurora-interpolation-validation-v4/audit.json \
+  --policy-out /tmp/aurora-interpolation-validation-v4/policy.json \
+  --v2-adapter-sha256 "$V2_SHA" \
+  --refresh1-adapter-sha256 "$REFRESH1_SHA" \
+  --primary-adapter-sha256 "$RECIPE2_SHA"
+```
+
+The output policy hashes the cases, gold, leakage audit, all construction
+inputs, both interpolation endpoints, and the recipe2 primary. It also fixes
+the nine-point grid `0, 0.125, ..., 1`, bootstrap seed 20260916, 10,000 paired
+stratified draws, and the following scoped eligibility thresholds:
+
+| Check | Required value |
+|---|---:|
+| Complete predictions | 384 |
+| Strict raw JSON validity, all cases | 100% |
+| Routing accuracy, routing controls | at least 95% |
+| No-search specificity, negatives | at least 95% |
+| Search-trigger recall, positives | at least 95% |
+| Search-query end-to-end recall, positives | at least 95% |
+| Mask-trigger F1, mask controls | at least 95% |
+| Rewrite constraint retention | at least 85% |
+
+Do not regenerate the validation bundle or policy after inspecting any
+candidate output. A failed build must be retried in a fresh output directory,
+and candidate inference must wait until all hashes and the 384-video audit are
+accepted.
+
+Because recipe2 is the registered primary but was produced after the v2 and
+refresh1 corpora used by the builder, preserve the sealed v4 policy and add a
+separate post-seal cross-audit before reading candidate metrics:
+
+```bash
+python -m scripts.audit_primary_validation_isolation \
+  --cases /tmp/aurora-interpolation-validation-v4/cases.jsonl \
+  --gold /tmp/aurora-interpolation-validation-v4/gold.jsonl \
+  --leakage-audit /tmp/aurora-interpolation-validation-v4/audit.json \
+  --policy /tmp/aurora-interpolation-validation-v4/policy.json \
+  --recipe2-train /tmp/aurora-sft-refresh-recipe2/refresh_train.jsonl \
+  --recipe2-eval /tmp/aurora-sft-refresh-recipe2/refresh_eval.jsonl \
+  --v2-train /tmp/aurora-sft-5k/sft_final_12597_v2_train.jsonl \
+  --v2-eval /tmp/aurora-sft-5k/sft_final_12597_v2_eval.jsonl \
+  --out /tmp/aurora-interpolation-validation-v4/recipe2_cross_audit.json
+```
+
+This artifact is explicitly `supplemental_post_seal`: it hashes the immutable
+v4 cases, gold, and policy plus the recipe2 train/eval files, but it does not
+rewrite the policy or change any threshold. All blocking source, exact-prompt,
+concept, strict-template, and constraint overlaps must be zero. Generic
+routing/mask skeletons and broad paired 4-grams remain diagnostic-only and
+are recorded with bounded examples.
+
+## 11. Build, run, and select the registered candidates
+
+The fallback grid interpolates parameter deltas between the original v2
+adapter (`lambda=0`) and the preserved refresh1 adapter (`lambda=1`). Use
+exact delta-space rank concatenation; averaging LoRA A/B factors is not
+equivalent. The interpolation utility creates rank-64 / alpha-128 adapters while preserving
+the parents' scaling:
+
+```bash
+GRID_ROOT=/tmp/aurora-interpolation-grid-v1
+for PAIR in 0000:0 0125:0.125 0250:0.25 0375:0.375 0500:0.5 0625:0.625 0750:0.75 0875:0.875 1000:1; do
+  SLUG=${PAIR%%:*}
+  LAMBDA=${PAIR#*:}
+  python -m scripts.interpolate_lora_adapters \
+    --adapter-a /tmp/aurora-sft-5k/lora-final-12597-best-eval \
+    --adapter-b /tmp/aurora-sft-refresh/lora-refresh-selected \
+    --lambda-b "$LAMBDA" \
+    --out-dir "$GRID_ROOT/lambda_$SLUG/adapter"
+done
+
+mkdir -p "$GRID_ROOT/recipe2"
+cp -a /tmp/aurora-sft-refresh-recipe2/lora-refresh-selected \
+  "$GRID_ROOT/recipe2/adapter"
+```
+
+Evaluate every registered adapter with the same fail-fast generic runner. It
+requires exact local model paths, exactly 384 predictions, no per-case errors,
+unchanged inputs, and a fresh result directory:
+
+```bash
+for CANDIDATE in lambda_0000 lambda_0125 lambda_0250 lambda_0375 lambda_0500 lambda_0625 lambda_0750 lambda_0875 lambda_1000 recipe2; do
+  python -m scripts.run_planner_eval \
+    --base /mlx_devbox/users/jieyu.li/models/Qwen3-VL-8B-Instruct \
+    --adapter "$GRID_ROOT/$CANDIDATE/adapter" \
+    --cases /tmp/aurora-interpolation-validation-v4/cases.jsonl \
+    --gold /tmp/aurora-interpolation-validation-v4/gold.jsonl \
+    --out-dir "$GRID_ROOT/$CANDIDATE/eval" \
+    --expected-cases 384 \
+    --device cuda:0
+done
+```
+
+Then recompute all scoped metrics from raw planner records and apply the locked
+decision with the auditable selector:
+
+```bash
+python -m scripts.select_lora_interpolation \
+  --cases /tmp/aurora-interpolation-validation-v4/cases.jsonl \
+  --gold /tmp/aurora-interpolation-validation-v4/gold.jsonl \
+  --leakage-audit /tmp/aurora-interpolation-validation-v4/audit.json \
+  --policy /tmp/aurora-interpolation-validation-v4/policy.json \
+  --candidates-root /tmp/aurora-interpolation-grid-v1 \
+  --primary-reference-adapter /tmp/aurora-sft-refresh-recipe2/lora-refresh-selected \
+  --comparison-out /tmp/aurora-interpolation-validation-v4/comparison.json \
+  --selection-out /tmp/aurora-interpolation-validation-v4/selection.json
+```
+
+`--primary-reference-adapter` is the loss-selected recipe2 training artifact,
+not a validation-derived choice. The selector requires its config and weights
+to be byte-identical to the copied `recipe2/adapter`, records both hashes, and
+rejects a missing or drifted reference without changing the sealed policy.
+
+The final rule is primary-first: select recipe2 if it meets every eligibility
+threshold. Otherwise restrict the grid to eligible candidates, define utility
+as `0.5 * no-search specificity + 0.5 * rewrite retention`, find the
+point-estimate winner, and select the smallest lambda within one bootstrap
+standard error of it. The selector still reports the complete grid when
+recipe2 is eligible. If neither recipe2 nor any grid candidate is eligible,
+there is no selected final adapter; do not relax the thresholds after seeing
+the outputs.
+
+## 12. Reuse Day-14 only as an adaptive post-selection regression
+
+After `selection.json` is immutable, run the unchanged Day-14 wrapper at most
+once on the selected adapter:
+
+```bash
+SELECTED_ADAPTER=$(python -c 'import json; print(json.load(open("/tmp/aurora-interpolation-validation-v4/selection.json"))["selected_adapter_dir"])')
+
+HF_HOME=/tmp/aurora-hf-cache \
+.venv/bin/python scripts/run_day14_gate.py \
+  --adapter "$SELECTED_ADAPTER" \
+  --out-dir /tmp/aurora-day14-selected-adaptive
+```
+
+This run is an adaptive regression because the suite has already influenced
+diagnosis and exclusion rules. It is not a held-out or confirmatory result and
+must not change the selected adapter. Any confirmatory claim requires a
+separate sealed evaluation set.
+
+Keep the following trees separate and immutable when staging through the
+Devbox and pulling them locally:
+
+```text
+/tmp/aurora-sft-refresh/                    # failed refresh1 finding
+/tmp/aurora-sft-refresh-recipe2/            # corrected data, training, selection
+/tmp/aurora-interpolation-validation-v4/    # sealed cases, audit, policy, decision
+/tmp/aurora-interpolation-grid-v1/          # ten adapters and fresh-384 runs
+/tmp/aurora-day14-selected-adaptive/        # one post-selection regression
+```
+
+Retain logs, raw predictions, all selection JSON, interpolation provenance,
+adapter files, and SHA-256 manifests. Verify the same relative-path hashes
+after each transfer hop. The existing `runs/week2/final_12597/` bundle remains
+the historical v2 baseline and must not be overwritten by these correction
+artifacts.
+
+## 13. Assemble and verify the corrected portable bundles
+
+Do this on the live Worker before releasing it. The assembler claims a new
+destination atomically, never changes a source artifact, excludes evaluation
+keyframes, emits the adapter identity/config proofs, copies the exclusion-
+locked Day-14 suite as `adaptive_day14/gold.jsonl`, and writes
+`checksums.sha256` last. A failed assembly removes only the new destination it
+claimed.
+
+The runtime-to-bundle mapping is fixed:
+
+| Runtime source | Portable destination |
+|---|---|
+| recipe2 `lora-refresh/` and `lora-refresh-selected/` | `recipe2/` |
+| recipe2 train/eval/audit/YAML/policy/selection | `recipe2/metadata/` |
+| fresh `cases.jsonl`, `gold.jsonl` | `fresh384/` |
+| fresh `audit.json`, `policy.json` | `fresh384/leakage_audit.json`, `fresh384/selection_policy.json` |
+| fresh `recipe2_cross_audit.json` | `fresh384/recipe2_cross_audit.json` |
+| fresh `comparison.json`, `selection.json` | `selection/` |
+| v2 / refresh1 / recipe2 adapter configs and live hashes | `selection/endpoint_configs/`, `selection/adapter_identities.json` |
+| ten grid-root candidate directories | `candidates/` |
+| adaptive Day-14 five outputs | `adaptive_day14/` |
+| locked `data/week1/planner_100.jsonl` | `adaptive_day14/gold.jsonl` |
+
+Build both profiles from the same immutable sources. `corrected-full` keeps
+all recipe2 checkpoint state and all ten candidate weights. On the Worker it
+hardlinks large files when the filesystem permits, so do not modify a source
+file after assembly. `corrected-thin` is the durable transfer profile: it
+keeps all raw predictions, logs, manifests, configs, provenance, trainer
+states, and the final selected candidate weight, while omitting reconstructible
+non-selected weights.
+
+```bash
+cd /mlx_devbox/users/jieyu.li/Aurora
+
+RECIPE2_ROOT=/tmp/aurora-sft-refresh-recipe2
+FRESH_ROOT=/tmp/aurora-interpolation-validation-v4
+CANDIDATES_ROOT=/tmp/aurora-interpolation-grid-v1
+ADAPTIVE_ROOT=/tmp/aurora-day14-selected-adaptive
+DAY14_GOLD=/mlx_devbox/users/jieyu.li/Aurora/data/week1/planner_100.jsonl
+V2_ADAPTER=/tmp/aurora-sft-5k/lora-final-12597-best-eval
+REFRESH1_ADAPTER=/tmp/aurora-sft-refresh/lora-refresh-selected
+
+python -m scripts.assemble_week2_corrected_bundle \
+  --profile corrected-full \
+  --recipe2-root "$RECIPE2_ROOT" \
+  --fresh-root "$FRESH_ROOT" \
+  --candidates-root "$CANDIDATES_ROOT" \
+  --adaptive-day14-root "$ADAPTIVE_ROOT" \
+  --day14-gold "$DAY14_GOLD" \
+  --v2-adapter "$V2_ADAPTER" \
+  --refresh1-adapter "$REFRESH1_ADAPTER" \
+  --out-root /tmp/aurora-week2-corrected-full
+
+python -m scripts.assemble_week2_corrected_bundle \
+  --profile corrected-thin \
+  --recipe2-root "$RECIPE2_ROOT" \
+  --fresh-root "$FRESH_ROOT" \
+  --candidates-root "$CANDIDATES_ROOT" \
+  --adaptive-day14-root "$ADAPTIVE_ROOT" \
+  --day14-gold "$DAY14_GOLD" \
+  --v2-adapter "$V2_ADAPTER" \
+  --refresh1-adapter "$REFRESH1_ADAPTER" \
+  --out-root /tmp/aurora-week2-corrected-thin
+```
+
+The assembler runs the semantic audit once before keeping either destination.
+Run the public verifier explicitly as the handoff record and again after every
+transfer hop:
 
 ```bash
 python -m scripts.verify_week2_bundle \
-  --root runs/week2/final_12597 \
-  --write-manifest runs/week2/final_12597/checksums.sha256 \
+  --root /tmp/aurora-week2-corrected-full \
+  --profile corrected-full \
+  --verify-manifest /tmp/aurora-week2-corrected-full/checksums.sha256 \
   --audit
 
 python -m scripts.verify_week2_bundle \
-  --root runs/week2/final_12597 \
-  --verify-manifest runs/week2/final_12597/checksums.sha256 \
+  --root /tmp/aurora-week2-corrected-thin \
+  --profile corrected-thin \
+  --verify-manifest /tmp/aurora-week2-corrected-thin/checksums.sha256 \
   --audit
 ```
 
-The audit verifies the 12,597 / 12,339 / 258 data counts, the 4,899 / 100
-source-video split with zero overlap, a successful training exit code, the
-best-eval selection record, a resumable checkpoint, and the complete 100-case
-gate result. Do not delete the Devbox staging copy until the local checksum and
-semantic audit both pass.
+Do not regenerate a manifest after transfer. A mismatch is evidence of an
+incomplete or changed transfer; retry into a fresh destination instead. Keep
+the full Worker bundle until the independently transferred thin bundle passes
+both checksum verification and the `corrected-thin` semantic audit locally.

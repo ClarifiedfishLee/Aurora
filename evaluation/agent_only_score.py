@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 
 PLAN_FIELDS = {"refined_text_instruction", "subtask", "image_search", "mask"}
@@ -54,14 +55,31 @@ def extract_plan(row: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_json_constant(value: str) -> None:
+    raise ValueError(f"non-standard JSON numeric constant {value!r}")
+
+
 def extract_strict_raw_plan(row: dict[str, Any]) -> dict[str, Any] | None:
     """Parse the complete raw model response without runtime normalization."""
     raw = row.get("agent_raw")
     if not isinstance(raw, str):
         return None
     try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
+        parsed = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=_reject_nonfinite_json_constant,
+        )
+    except (json.JSONDecodeError, ValueError):
         return None
     return parsed if isinstance(parsed, dict) else None
 
