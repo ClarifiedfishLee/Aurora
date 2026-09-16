@@ -69,3 +69,31 @@ llamafactory-cli train /tmp/aurora-sft-bootstrap-500/train.yaml
 The generated smoke config matches Aurora's LoRA rank 32 / alpha 64, uses the
 official `qwen3_vl_nothink` template, validates one `<video>` token per media
 path, and limits video pixels before any GPU allocation.
+
+## 4. Smoke result and calibration gate
+
+The 500-case smoke completed one epoch on one A100-SXM4-80GB in 203 seconds
+(62 optimizer steps). It reached train loss 0.0842 and eval loss 0.0210. On
+the 100-case development regression it retained valid JSON on every case,
+mask F1 was 100%, and lexical constraint retention rose to 74.5%. However,
+search F1 fell to zero because only 10 of the 500 teacher plans requested a
+search. Routing also fell to 72%. This is a useful pipeline pass but a data
+balance failure, so it must not be scaled unchanged.
+
+Before the 5K run, add distinct calibration examples for under-search and for
+the full route taxonomy:
+
+```bash
+python -m scripts.augment_planner_sft \
+  --base /tmp/aurora-sft-bootstrap-500/sft_llama.jsonl \
+  --out /tmp/aurora-sft-bootstrap-500/sft_calibrated.jsonl \
+  --metadata-out /tmp/aurora-sft-bootstrap-500/calibration_metadata.jsonl \
+  --search-count 500 --routing-count 500
+```
+
+The external-entity catalog deliberately excludes identities used by the
+100-case regression suite. Search examples alternate `add_object` and
+`replace_object`; routing examples cover every executable route except
+`customization`, which requires a real reference image and must not be faked
+with a video-only record. Re-run the same 100-case gate before expanding the
+working set.
