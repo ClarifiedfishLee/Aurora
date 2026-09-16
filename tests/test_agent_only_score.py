@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from evaluation.agent_only_score import score
@@ -43,6 +44,14 @@ class AgentOnlyScoreTest(unittest.TestCase):
                     "image_search": False,
                     "mask": "cup",
                 },
+                "agent_raw": json.dumps(
+                    {
+                        "refined_text_instruction": "Make the cup red; preserve both plates.",
+                        "subtask": "change_color",
+                        "image_search": False,
+                        "mask": "cup",
+                    }
+                ),
             },
             {
                 "bench_id": "mae_pilot_0002",
@@ -52,12 +61,21 @@ class AgentOnlyScoreTest(unittest.TestCase):
                     "image_search": False,
                     "mask": False,
                 },
+                "agent_raw": json.dumps(
+                    {
+                        "refined_text_instruction": "Replace the bottle with a generic cup.",
+                        "subtask": "add_object",
+                        "image_search": False,
+                        "mask": False,
+                    }
+                ),
             },
         ]
 
         metrics = score(gold, predictions)
 
         self.assertEqual(metrics["json_validity"], 1.0)
+        self.assertEqual(metrics["strict_raw_json_validity"], 1.0)
         self.assertEqual(metrics["subtask_accuracy"], 0.5)
         self.assertEqual(metrics["image_search_trigger"]["f1"], 0.0)
         self.assertEqual(metrics["mask_trigger"]["recall"], 0.5)
@@ -67,6 +85,109 @@ class AgentOnlyScoreTest(unittest.TestCase):
         self.assertEqual(metrics["details"]["routing_errors"][0]["bench_id"], "mae_pilot_0002")
         self.assertEqual(metrics["by_axis"]["rewrite"]["subtask_accuracy"], 1.0)
         self.assertEqual(metrics["by_axis"]["search"]["subtask_accuracy"], 0.0)
+
+    def test_strict_raw_validity_does_not_use_normalized_plan(self) -> None:
+        gold = [
+            {
+                "bench_id": "strict_1",
+                "axis": "routing",
+                "gold_plan": {
+                    "refined_text_instruction": "Remove the cup.",
+                    "subtask": "remove_object",
+                    "image_search": False,
+                    "mask": "cup",
+                },
+            },
+            {
+                "bench_id": "strict_2",
+                "axis": "routing",
+                "gold_plan": {
+                    "refined_text_instruction": "Remove the cup.",
+                    "subtask": "remove_object",
+                    "image_search": False,
+                    "mask": "cup",
+                },
+            },
+            {
+                "bench_id": "strict_3",
+                "axis": "routing",
+                "gold_plan": {
+                    "refined_text_instruction": "Remove the cup.",
+                    "subtask": "remove_object",
+                    "image_search": False,
+                    "mask": "cup",
+                },
+            },
+        ]
+        normalized_plan = {
+            "refined_text_instruction": "Remove the cup.",
+            "subtask": "remove_object",
+            "image_search": False,
+            "mask": "cup",
+        }
+        predictions = [
+            {
+                "bench_id": "strict_1",
+                "plan": normalized_plan,
+                "agent_raw": json.dumps({**normalized_plan, "explanation": "done"}),
+            },
+            {
+                "bench_id": "strict_2",
+                "plan": normalized_plan,
+                "agent_raw": f"Result: {json.dumps(normalized_plan)}",
+            },
+            {
+                "bench_id": "strict_3",
+                "plan": normalized_plan,
+                "agent_raw": json.dumps({**normalized_plan, "subtask": ["remove_object"]}),
+            },
+        ]
+
+        metrics = score(gold, predictions)
+
+        self.assertEqual(metrics["json_validity"], 1.0)
+        self.assertIn("normalized runtime", metrics["json_validity_method"])
+        self.assertEqual(metrics["strict_raw_json_validity"], 0.0)
+        self.assertEqual(
+            metrics["details"]["strict_raw_invalid_predictions"],
+            ["strict_1", "strict_2", "strict_3"],
+        )
+
+    def test_rejects_duplicate_bench_ids(self) -> None:
+        gold_row = {
+            "bench_id": "duplicate",
+            "gold_plan": {
+                "refined_text_instruction": "Remove the cup.",
+                "subtask": "remove_object",
+                "image_search": False,
+                "mask": "cup",
+            },
+        }
+        with self.assertRaisesRegex(ValueError, "duplicate gold bench_id"):
+            score([gold_row, dict(gold_row)], [])
+
+        with self.assertRaisesRegex(ValueError, "duplicate prediction bench_id"):
+            score(
+                [gold_row],
+                [{"bench_id": "duplicate"}, {"bench_id": "duplicate"}],
+            )
+
+    def test_reports_extra_prediction_ids(self) -> None:
+        plan = {
+            "refined_text_instruction": "Remove the cup.",
+            "subtask": "remove_object",
+            "image_search": False,
+            "mask": "cup",
+        }
+        gold = [{"bench_id": "expected", "gold_plan": plan}]
+        predictions = [
+            {"bench_id": "expected", "plan": plan, "agent_raw": json.dumps(plan)},
+            {"bench_id": "unexpected", "plan": plan, "agent_raw": json.dumps(plan)},
+        ]
+
+        metrics = score(gold, predictions)
+
+        self.assertEqual(metrics["details"]["extra_prediction_ids"], ["unexpected"])
 
 
 if __name__ == "__main__":

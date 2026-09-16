@@ -54,12 +54,24 @@ def extract_plan(row: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def extract_strict_raw_plan(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Parse the complete raw model response without runtime normalization."""
+    raw = row.get("agent_raw")
+    if not isinstance(raw, str):
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def valid_plan(plan: dict[str, Any] | None) -> bool:
     if not isinstance(plan, dict) or set(plan) != PLAN_FIELDS:
         return False
     if not isinstance(plan["refined_text_instruction"], str) or not plan["refined_text_instruction"].strip():
         return False
-    if plan["subtask"] not in SUBTASKS:
+    if not isinstance(plan["subtask"], str) or plan["subtask"] not in SUBTASKS:
         return False
     return all(value is False or (isinstance(value, str) and bool(value.strip())) for value in (plan["image_search"], plan["mask"]))
 
@@ -95,9 +107,24 @@ def constraint_is_retained(constraint: dict[str, Any], instruction: str) -> bool
     return any(normalize(str(value)) in normalized_instruction for value in variants)
 
 
-def _score_rows(gold_rows: list[dict[str, Any]], prediction_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    predictions = {str(row.get("bench_id", "")): row for row in prediction_rows}
+def _index_by_bench_id(rows: list[dict[str, Any]], label: str) -> dict[str, dict[str, Any]]:
+    indexed: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        bench_id = str(row.get("bench_id", ""))
+        if bench_id in indexed:
+            raise ValueError(f"duplicate {label} bench_id: {bench_id!r}")
+        indexed[bench_id] = row
+    return indexed
+
+
+def _score_rows(
+    gold_rows: list[dict[str, Any]],
+    predictions: dict[str, dict[str, Any]],
+    *,
+    extra_prediction_ids: list[str] | None = None,
+) -> dict[str, Any]:
     validity: list[bool] = []
+    strict_raw_validity: list[bool] = []
     routing: list[bool] = []
     expected_search: list[bool] = []
     predicted_search: list[bool] = []
@@ -106,6 +133,7 @@ def _score_rows(gold_rows: list[dict[str, Any]], prediction_rows: list[dict[str,
     retained_constraints = total_constraints = exact_constraint_cases = constraint_cases = 0
     missing_predictions: list[str] = []
     invalid_predictions: list[str] = []
+    strict_raw_invalid_predictions: list[str] = []
     routing_errors: list[dict[str, str]] = []
     source_entity_search_cases = source_entity_false_triggers = 0
 
@@ -118,9 +146,13 @@ def _score_rows(gold_rows: list[dict[str, Any]], prediction_rows: list[dict[str,
         else:
             plan = extract_plan(prediction)
         is_valid = valid_plan(plan)
+        is_strict_raw_valid = prediction is not None and valid_plan(extract_strict_raw_plan(prediction))
         validity.append(is_valid)
+        strict_raw_validity.append(is_strict_raw_valid)
         if not is_valid:
             invalid_predictions.append(bench_id)
+        if not is_strict_raw_valid:
+            strict_raw_invalid_predictions.append(bench_id)
         gold_plan = gold["gold_plan"]
         actual_subtask = plan.get("subtask") if is_valid else None
         route_match = actual_subtask == gold_plan["subtask"]
@@ -150,6 +182,8 @@ def _score_rows(gold_rows: list[dict[str, Any]], prediction_rows: list[dict[str,
     return {
         "num_cases": total,
         "json_validity": sum(validity) / total if total else 0.0,
+        "json_validity_method": "normalized runtime plan validity (plan preferred; agent_raw fallback)",
+        "strict_raw_json_validity": sum(strict_raw_validity) / total if total else 0.0,
         "subtask_accuracy": sum(routing) / total if total else 0.0,
         "image_search_trigger": binary_counts(expected_search, predicted_search),
         "mask_trigger": binary_counts(expected_mask, predicted_mask),
@@ -164,6 +198,8 @@ def _score_rows(gold_rows: list[dict[str, Any]], prediction_rows: list[dict[str,
         "details": {
             "missing_predictions": missing_predictions,
             "invalid_predictions": invalid_predictions,
+            "strict_raw_invalid_predictions": strict_raw_invalid_predictions,
+            **({"extra_prediction_ids": extra_prediction_ids} if extra_prediction_ids is not None else {}),
             "routing_errors": routing_errors,
             "retained_constraints": retained_constraints,
             "total_constraints": total_constraints,
@@ -173,10 +209,15 @@ def _score_rows(gold_rows: list[dict[str, Any]], prediction_rows: list[dict[str,
 
 
 def score(gold_rows: list[dict[str, Any]], prediction_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    result = _score_rows(gold_rows, prediction_rows)
+    gold_by_id = _index_by_bench_id(gold_rows, "gold")
+    predictions = _index_by_bench_id(prediction_rows, "prediction")
+    extra_prediction_ids = sorted(set(predictions) - set(gold_by_id))
+    result = _score_rows(gold_rows, predictions, extra_prediction_ids=extra_prediction_ids)
     axes = sorted({str(row["axis"]) for row in gold_rows if row.get("axis")})
     result["by_axis"] = {
-        axis: _score_rows([row for row in gold_rows if str(row.get("axis")) == axis], prediction_rows)
+        axis: _score_rows(
+            [row for row in gold_rows if str(row.get("axis")) == axis], predictions
+        )
         for axis in axes
     }
     return result
