@@ -11,6 +11,7 @@ from typing import Any, TypeVar
 
 
 _T = TypeVar("_T")
+GENERATOR_VERSION = "hard-request-v2"
 
 
 GENERAL_CATEGORIES = (
@@ -492,6 +493,14 @@ def main() -> None:
                     "source_index": index,
                     "raw_output": raw_output,
                     "candidate_outputs": candidate_outputs,
+                    "generation": {
+                        "version": GENERATOR_VERSION,
+                        "model": str(args.model),
+                        "seed": args.seed,
+                        "candidates": args.candidates,
+                        "temperature": 0.6,
+                        "top_p": 0.9,
+                    },
                 }
                 destination = accepted_handle if accepted else rejected_handle
                 destination.write(json.dumps(record, ensure_ascii=False) + "\n")
