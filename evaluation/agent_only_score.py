@@ -146,6 +146,7 @@ def _score_rows(
     strict_raw_invalid_predictions: list[str] = []
     routing_errors: list[dict[str, str]] = []
     source_entity_search_cases = source_entity_false_triggers = 0
+    source_entity_false_trigger_ids: list[str] = []
     search_query_gold_positive_cases = 0
     search_query_triggered_cases = 0
     search_query_correct_queries = 0
@@ -192,6 +193,8 @@ def _score_rows(
         if not search_expected and gold.get("source_entities"):
             source_entity_search_cases += 1
             source_entity_false_triggers += int(search_was_triggered)
+            if search_was_triggered:
+                source_entity_false_trigger_ids.append(bench_id)
         expected_mask.append(triggered(gold_plan["mask"]))
         predicted_mask.append(triggered(plan["mask"]) if is_valid else False)
 
@@ -238,6 +241,7 @@ def _score_rows(
             "num_cases": source_entity_search_cases,
             "false_triggers": source_entity_false_triggers,
             "rate": source_entity_false_triggers / source_entity_search_cases if source_entity_search_cases else 0.0,
+            "ids": source_entity_false_trigger_ids,
         },
         "details": {
             "missing_predictions": missing_predictions,

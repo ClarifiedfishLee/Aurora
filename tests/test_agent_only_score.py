@@ -83,6 +83,7 @@ class AgentOnlyScoreTest(unittest.TestCase):
         self.assertEqual(metrics["constraint_retention"], 2 / 3)
         self.assertEqual(metrics["source_entity_false_trigger"]["num_cases"], 1)
         self.assertEqual(metrics["source_entity_false_trigger"]["rate"], 0.0)
+        self.assertEqual(metrics["source_entity_false_trigger"]["ids"], [])
         self.assertEqual(metrics["details"]["routing_errors"][0]["bench_id"], "mae_pilot_0002")
         self.assertEqual(metrics["by_axis"]["rewrite"]["subtask_accuracy"], 1.0)
         self.assertEqual(metrics["by_axis"]["search"]["subtask_accuracy"], 0.0)
@@ -256,6 +257,36 @@ class AgentOnlyScoreTest(unittest.TestCase):
         metrics = score(gold, predictions)
 
         self.assertEqual(metrics["details"]["extra_prediction_ids"], ["unexpected"])
+
+    def test_reports_source_entity_false_trigger_ids(self) -> None:
+        gold = [
+            {
+                "bench_id": "style_false_search",
+                "gold_plan": {
+                    "refined_text_instruction": "Restyle the whole video.",
+                    "subtask": "global_style",
+                    "image_search": False,
+                    "mask": False,
+                },
+                "source_entities": ["dog"],
+            }
+        ]
+        plan = {
+            "refined_text_instruction": "Restyle the whole video.",
+            "subtask": "global_style",
+            "image_search": "named painter",
+            "mask": False,
+        }
+        predictions = [
+            {"bench_id": "style_false_search", "plan": plan, "agent_raw": json.dumps(plan)}
+        ]
+
+        metrics = score(gold, predictions)
+
+        self.assertEqual(metrics["source_entity_false_trigger"]["false_triggers"], 1)
+        self.assertEqual(
+            metrics["source_entity_false_trigger"]["ids"], ["style_false_search"]
+        )
 
 
 if __name__ == "__main__":
