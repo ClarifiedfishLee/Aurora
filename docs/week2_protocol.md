@@ -183,6 +183,13 @@ videos and 258 evaluation rows from 100 videos, with zero source-video overlap.
 The generated config retains LoRA rank 32 / alpha 64, evaluates and checkpoints
 during the one-epoch run, and keeps only the two newest checkpoints.
 
+Before reading the 100-case development result, select the main SFT adapter as
+the checkpoint with the lowest loss on this grouped 258-row evaluation split.
+Copy only its inference files to `lora-final-12597-best-eval` as checkpoints
+are rotated. This is the pre-registered model-selection rule; do not choose a
+checkpoint using the 100-case gate. If the last-step root adapter differs from
+the best-eval checkpoint, report it only as a separate diagnostic.
+
 Launch training in the prepared Worker environment:
 
 ```bash
@@ -196,7 +203,8 @@ are under the Worker's `/tmp`; only the base-model path above is persistent.
 `/tmp` disappears with the Worker. For this run the persistent `/mlx_devbox`
 volume was already full, so copying there would not be a valid backup. After
 the trainer exits successfully, use resumable `rsync` to stage the complete
-output directory in the Devbox master's `/tmp`, then immediately pull it into
+output directory and `lora-final-12597-best-eval` snapshot in the Devbox
+master's `/tmp`, then immediately pull them into
 `runs/week2/final_12597/` on the local machine. Generate a sorted SHA-256
 manifest on the Worker and verify it locally before treating the backup as
 complete. Retain the Devbox staging copy until local verification succeeds.
@@ -211,7 +219,7 @@ python -m aurora.agent \
   --custom_cases_jsonl data/week1/planner_100.jsonl \
   --custom_only --plan_only --mask_backend none \
   --agent_base /mlx_devbox/users/jieyu.li/models/Qwen3-VL-8B-Instruct \
-  --agent_adapter /tmp/aurora-sft-5k/lora-final-12597 \
+  --agent_adapter /tmp/aurora-sft-5k/lora-final-12597-best-eval \
   --out_dir /tmp/aurora-sft-5k/day14_gate
 
 python -m evaluation.agent_only_score \
