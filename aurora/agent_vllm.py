@@ -78,9 +78,15 @@ class AgentVLMvLLM:
         video: PreparedVideo | None = None,
         max_new_tokens: int | None = None,
     ) -> str:
+        request = self._request_from_parts(content)
+        sampling = self._SamplingParams(temperature=0.0, max_tokens=max_new_tokens or self.max_new_tokens)
+        outputs = self.llm.generate([request], sampling)
+        return outputs[0].outputs[0].text.strip()
+
+    def _request_from_parts(self, content: list[dict[str, Any]]) -> dict[str, Any]:
+        """Convert Aurora message parts into one vLLM multimodal request."""
         # vLLM's Qwen3-VL video input requires per-frame metadata and is
-        # version-dependent; feed the sampled video frames as still images
-        # instead (robust across vLLM versions, same as the API agent path).
+        # version-dependent; feed sampled video frames as still images.
         parts: list[dict[str, Any]] = []
         for p in content:
             if p.get("type") == "video":
@@ -92,9 +98,33 @@ class AgentVLMvLLM:
         messages = [{"role": "user", "content": parts}]
         text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         mm = {"image": imgs} if imgs else None
-        sampling = self._SamplingParams(temperature=0.0, max_tokens=max_new_tokens or self.max_new_tokens)
-        outputs = self.llm.generate([{"prompt": text, "multi_modal_data": mm}], sampling)
-        return outputs[0].outputs[0].text.strip()
+        return {"prompt": text, "multi_modal_data": mm}
+
+    @staticmethod
+    def _plan_content(
+        instruction: str,
+        video: PreparedVideo | None,
+        ref_images: list[Image.Image] | None,
+    ) -> list[dict[str, Any]]:
+        content: list[dict[str, Any]] = [{"type": "text", "text": TYPE1_SYSTEM.rstrip() + "\n\n"}]
+        for i, image in enumerate(ref_images or [], start=1):
+            content.extend(
+                [
+                    {"type": "text", "text": f"Image{i}: "},
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": "\n"},
+                ]
+            )
+        if video and video.frames:
+            content.extend(
+                [
+                    {"type": "text", "text": "Video: "},
+                    {"type": "video", "video": video.frames, "fps": video.fps},
+                    {"type": "text", "text": "\n"},
+                ]
+            )
+        content.append({"type": "text", "text": f"Text Instruction: {instruction}"})
+        return content
 
     # plan() and select_image() are identical to aurora.agent.AgentVLM: they build
     # the same content parts and route through _generate_from_parts, then reuse the
@@ -106,20 +136,23 @@ class AgentVLMvLLM:
         video: PreparedVideo | None = None,
         ref_images: list[Image.Image] | None = None,
     ) -> tuple[dict[str, Any], str]:
-        content: list[dict[str, Any]] = [{"type": "text", "text": TYPE1_SYSTEM.rstrip() + "\n\n"}]
-        images: list[Image.Image] = []
-        for i, image in enumerate(ref_images or [], start=1):
-            content.append({"type": "text", "text": f"Image{i}: "})
-            content.append({"type": "image", "image": image})
-            images.append(image)
-            content.append({"type": "text", "text": "\n"})
-        if video and video.frames:
-            content.append({"type": "text", "text": "Video: "})
-            content.append({"type": "video", "video": video.frames, "fps": video.fps})
-            content.append({"type": "text", "text": "\n"})
-        content.append({"type": "text", "text": f"Text Instruction: {instruction}"})
-        raw = self._generate_from_parts(content, images=images, video=video, max_new_tokens=320)
+        content = self._plan_content(instruction, video, ref_images)
+        raw = self._generate_from_parts(content, max_new_tokens=320)
         return normalize_plan(parse_json_object(raw)), raw
+
+    def plan_batch(
+        self,
+        items: list[tuple[str, PreparedVideo | None, list[Image.Image] | None]],
+    ) -> list[tuple[dict[str, Any], str]]:
+        """Plan several independent cases in one vLLM scheduler call."""
+        requests = [self._request_from_parts(self._plan_content(*item)) for item in items]
+        sampling = self._SamplingParams(temperature=0.0, max_tokens=320)
+        outputs = self.llm.generate(requests, sampling)
+        results = []
+        for output in outputs:
+            raw = output.outputs[0].text.strip()
+            results.append((normalize_plan(parse_json_object(raw)), raw))
+        return results
 
     def select_image(
         self,
