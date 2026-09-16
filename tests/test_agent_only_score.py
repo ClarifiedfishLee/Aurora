@@ -31,6 +31,7 @@ class AgentOnlyScoreTest(unittest.TestCase):
                     "image_search": "Stanley tumbler cup",
                     "mask": "bottle",
                 },
+                "search_query_aliases": ["Stanley tumbler"],
                 "constraints": [{"type": "identity", "value": "Stanley tumbler"}],
                 "source_entities": ["bottle"],
             },
@@ -85,6 +86,73 @@ class AgentOnlyScoreTest(unittest.TestCase):
         self.assertEqual(metrics["details"]["routing_errors"][0]["bench_id"], "mae_pilot_0002")
         self.assertEqual(metrics["by_axis"]["rewrite"]["subtask_accuracy"], 1.0)
         self.assertEqual(metrics["by_axis"]["search"]["subtask_accuracy"], 0.0)
+
+    def test_scores_explicit_search_query_aliases_directionally(self) -> None:
+        def gold_row(bench_id: str, query: str, aliases: list[str]) -> dict:
+            return {
+                "bench_id": bench_id,
+                "axis": "search",
+                "gold_plan": {
+                    "refined_text_instruction": f"Use {query}.",
+                    "subtask": "replace_object",
+                    "image_search": query,
+                    "mask": False,
+                },
+                "search_query_aliases": aliases,
+            }
+
+        def prediction_row(bench_id: str, query: str | bool) -> dict:
+            plan = {
+                "refined_text_instruction": "Replace the object.",
+                "subtask": "replace_object",
+                "image_search": query,
+                "mask": False,
+            }
+            return {"bench_id": bench_id, "plan": plan, "agent_raw": json.dumps(plan)}
+
+        gold = [
+            gold_row(
+                "qualified",
+                "rose quartz Stanley Quencher tumbler",
+                ["rose quartz Stanley Quencher"],
+            ),
+            gold_row(
+                "explicit_short_alias",
+                "Trek Madone racing bicycle",
+                ["Trek Madone racing bicycle", "Trek Madone"],
+            ),
+            gold_row("generic_noun", "Starbucks holiday cup", ["Starbucks holiday cup"]),
+            gold_row(
+                "reverse_substring",
+                "rose quartz Stanley Quencher tumbler",
+                ["rose quartz Stanley Quencher"],
+            ),
+            gold_row("missed", "Eiffel Tower", ["Eiffel Tower"]),
+        ]
+        predictions = [
+            prediction_row("qualified", "official rose quartz Stanley Quencher product photo"),
+            prediction_row("explicit_short_alias", "Trek Madone side view"),
+            prediction_row("generic_noun", "cup"),
+            prediction_row("reverse_substring", "Stanley"),
+            prediction_row("missed", False),
+        ]
+
+        metrics = score(gold, predictions)
+
+        self.assertEqual(metrics["image_search_trigger"]["tp"], 4)
+        self.assertEqual(metrics["image_search_trigger"]["fn"], 1)
+        self.assertEqual(
+            metrics["image_search_query"],
+            {
+                "gold_positive_cases": 5,
+                "triggered_cases": 4,
+                "correct_queries": 2,
+                "conditional_accuracy": 0.5,
+                "end_to_end_recall": 0.4,
+                "wrong_query_ids": ["generic_noun", "reverse_substring"],
+                "missed_trigger_ids": ["missed"],
+            },
+        )
 
     def test_strict_raw_validity_does_not_use_normalized_plan(self) -> None:
         gold = [

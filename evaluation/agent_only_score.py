@@ -107,6 +107,16 @@ def constraint_is_retained(constraint: dict[str, Any], instruction: str) -> bool
     return any(normalize(str(value)) in normalized_instruction for value in variants)
 
 
+def search_query_matches_alias(query: str, aliases: Iterable[Any]) -> bool:
+    """Return whether a complete, explicitly allowed alias occurs in a query."""
+    normalized_query = f" {normalize(query)} "
+    for alias in aliases:
+        normalized_alias = normalize(str(alias))
+        if normalized_alias and f" {normalized_alias} " in normalized_query:
+            return True
+    return False
+
+
 def _index_by_bench_id(rows: list[dict[str, Any]], label: str) -> dict[str, dict[str, Any]]:
     indexed: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -136,6 +146,11 @@ def _score_rows(
     strict_raw_invalid_predictions: list[str] = []
     routing_errors: list[dict[str, str]] = []
     source_entity_search_cases = source_entity_false_triggers = 0
+    search_query_gold_positive_cases = 0
+    search_query_triggered_cases = 0
+    search_query_correct_queries = 0
+    search_query_wrong_ids: list[str] = []
+    search_query_missed_ids: list[str] = []
 
     for gold in gold_rows:
         bench_id = str(gold["bench_id"])
@@ -159,10 +174,22 @@ def _score_rows(
         routing.append(route_match)
         if not route_match:
             routing_errors.append({"bench_id": bench_id, "expected": gold_plan["subtask"], "actual": str(actual_subtask)})
-        expected_search.append(triggered(gold_plan["image_search"]))
+        search_expected = triggered(gold_plan["image_search"])
+        expected_search.append(search_expected)
         search_was_triggered = triggered(plan["image_search"]) if is_valid else False
         predicted_search.append(search_was_triggered)
-        if not triggered(gold_plan["image_search"]) and gold.get("source_entities"):
+        if search_expected:
+            search_query_gold_positive_cases += 1
+            if not search_was_triggered:
+                search_query_missed_ids.append(bench_id)
+            else:
+                search_query_triggered_cases += 1
+                query = str(plan["image_search"])
+                if search_query_matches_alias(query, gold.get("search_query_aliases", [])):
+                    search_query_correct_queries += 1
+                else:
+                    search_query_wrong_ids.append(bench_id)
+        if not search_expected and gold.get("source_entities"):
             source_entity_search_cases += 1
             source_entity_false_triggers += int(search_was_triggered)
         expected_mask.append(triggered(gold_plan["mask"]))
@@ -186,6 +213,23 @@ def _score_rows(
         "strict_raw_json_validity": sum(strict_raw_validity) / total if total else 0.0,
         "subtask_accuracy": sum(routing) / total if total else 0.0,
         "image_search_trigger": binary_counts(expected_search, predicted_search),
+        "image_search_query": {
+            "gold_positive_cases": search_query_gold_positive_cases,
+            "triggered_cases": search_query_triggered_cases,
+            "correct_queries": search_query_correct_queries,
+            "conditional_accuracy": (
+                search_query_correct_queries / search_query_triggered_cases
+                if search_query_triggered_cases
+                else 0.0
+            ),
+            "end_to_end_recall": (
+                search_query_correct_queries / search_query_gold_positive_cases
+                if search_query_gold_positive_cases
+                else 0.0
+            ),
+            "wrong_query_ids": search_query_wrong_ids,
+            "missed_trigger_ids": search_query_missed_ids,
+        },
         "mask_trigger": binary_counts(expected_mask, predicted_mask),
         "constraint_retention": retained_constraints / total_constraints if total_constraints else 1.0,
         "constraint_retention_method": "normalized substring over gold values and aliases",
