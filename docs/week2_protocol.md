@@ -100,18 +100,20 @@ per subtask. Re-run the same 100-case gate before expanding the working set.
 
 The calibrated 1,500-case run passed that gate:
 
-| Model | JSON | Routing | Search F1 | Mask F1 | Constraint retention | False search |
-|---|---:|---:|---:|---:|---:|---:|
-| Released Aurora LoRA | 100% | 78% | 88.9% | 100% | 48.0% | 0% |
-| 500-case bootstrap | 100% | 72% | 0% | 100% | 74.5% | 0% |
-| 1,500-case calibrated SFT | 100% | 98% | 88.9% | 100% | 86.5% | 0% |
+| Model | Runtime / raw JSON | Routing | Search F1 | Valid-query recall | Mask F1 | Constraint retention | False search |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Released Aurora LoRA | 100% / 100% | 78% | 88.9% | 80% | 100% | 48.0% | 0% |
+| 500-case bootstrap | 100% / 98% | 72% | 0% | 0% | 100% | 74.5% | 0% |
+| 1,500-case calibrated SFT | 100% / 100% | 98% | 88.9% | 80% | 100% | 86.5% | 0% |
 
 The two remaining route errors are one `combined_tasks` case classified as
 `change_color` and the sole `customization` case classified as
 `replace_object`. The two missed searches are `Starbucks holiday cup` and
 `Japanese cherry blossom tree`, the same overall recall level as the released
-LoRA. These are development-regression results, not final held-out benchmark
-claims.
+LoRA. Every query that was triggered by the released and 1,500-case models
+contained the correct entity alias, so conditional query accuracy was 100%;
+valid-query recall above includes missed triggers. These are
+development-regression results, not final held-out benchmark claims.
 
 For the 5K stage, stream 2K Ditto-combined plus 1K each of ROSE insertion,
 removal, and v2v. The current `datasets` release requires `.decode(False)` so
