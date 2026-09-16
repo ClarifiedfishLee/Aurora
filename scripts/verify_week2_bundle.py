@@ -46,7 +46,10 @@ REQUIRED_FILES = (
     "metadata/sft_final_12597_v2.jsonl",
     "metadata/sft_final_12597_v2_train.jsonl",
     "metadata/sft_final_12597_v2_eval.jsonl",
+    "day14_gate/planner.log",
+    "day14_gate/scorer.log",
     "day14_gate/metrics.json",
+    "day14_gate/gate_summary.json",
     "day14_gate/agent_pipeline_records.jsonl",
 )
 
@@ -257,6 +260,18 @@ def audit_bundle(root: Path) -> dict[str, Any]:
                     "constraint_case_accuracy",
                 )
             }
+
+    gate_summary_path = root / "day14_gate/gate_summary.json"
+    if gate_summary_path.is_file():
+        gate_summary = _load_json(gate_summary_path, errors)
+        if gate_summary is not None:
+            observations["day14_gate_passed"] = gate_summary.get("passed")
+            if gate_summary.get("passed") is not True:
+                errors.append("Day-14 gate_summary.json does not record a passing gate")
+            if not isinstance(gate_summary.get("checks"), dict):
+                errors.append("Day-14 gate_summary.json must contain a checks object")
+            if not isinstance(gate_summary.get("diagnostics"), dict):
+                errors.append("Day-14 gate_summary.json must contain a diagnostics object")
 
     train_path = root / "metadata/sft_final_12597_v2_train.jsonl"
     eval_path = root / "metadata/sft_final_12597_v2_eval.jsonl"

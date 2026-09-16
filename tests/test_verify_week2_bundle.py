@@ -96,6 +96,8 @@ class VerifyWeek2BundleTest(unittest.TestCase):
             (gate / "agent_pipeline_records.jsonl").write_text(
                 json.dumps(records[0]) + "\n", encoding="utf-8"
             )
+            (gate / "planner.log").write_text("planner\n", encoding="utf-8")
+            (gate / "scorer.log").write_text("scorer\n", encoding="utf-8")
             gate_metrics = {
                 "num_cases": 100,
                 "json_validity": 1.0,
@@ -111,6 +113,10 @@ class VerifyWeek2BundleTest(unittest.TestCase):
                 "by_axis": {},
             }
             (gate / "metrics.json").write_text(json.dumps(gate_metrics), encoding="utf-8")
+            (gate / "gate_summary.json").write_text(
+                json.dumps({"passed": True, "checks": {}, "diagnostics": {}}),
+                encoding="utf-8",
+            )
             expected = {
                 "metadata/sft_final_12597_v2.jsonl": 2,
                 "metadata/sft_final_12597_v2_train.jsonl": 1,
@@ -121,6 +127,18 @@ class VerifyWeek2BundleTest(unittest.TestCase):
                 result = audit_bundle(root)
             self.assertTrue(result["ok"], result["errors"])
             self.assertEqual(result["observations"]["video_overlap"], 0)
+
+            (gate / "gate_summary.json").write_text(
+                json.dumps({"passed": False, "checks": {}, "diagnostics": {}}),
+                encoding="utf-8",
+            )
+            with patch.dict(EXPECTED_COUNTS, expected, clear=True):
+                failed = audit_bundle(root)
+            self.assertFalse(failed["ok"])
+            self.assertIn(
+                "Day-14 gate_summary.json does not record a passing gate",
+                failed["errors"],
+            )
 
 
 if __name__ == "__main__":
