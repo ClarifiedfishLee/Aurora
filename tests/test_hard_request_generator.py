@@ -5,6 +5,7 @@ from pathlib import Path
 
 from scripts.generate_hard_requests_vllm import (
     CATEGORY_GUIDANCE,
+    build_prompt,
     choose_category,
     completed_ids,
     load_resumable_jsonl,
@@ -143,6 +144,22 @@ class HardRequestGeneratorTest(unittest.TestCase):
             "insufficient_mask_detail",
             validate_request(mask_row, "mask_granularity", "remove it from the left"),
         )
+
+    def test_prompt_makes_constraints_and_actions_explicit(self):
+        row = {
+            "raw_user_request": "remove the two red cups and add a blue sign on the right",
+            "target_plan": {
+                "refined_text_instruction": "Remove the two red cups and add a blue sign on the right.",
+                "subtask": "combined_tasks",
+                "image_search": False,
+                "mask": False,
+            },
+        }
+        prompt = build_prompt(row, "compositional_edit")
+        self.assertIn("retain the concept 'two'", prompt)
+        self.assertIn("retain the concept 'right'", prompt)
+        self.assertIn("express the 'remove' edit action", prompt)
+        self.assertIn("express the 'add' edit action", prompt)
 
 
 if __name__ == "__main__":

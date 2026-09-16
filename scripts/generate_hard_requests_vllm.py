@@ -11,7 +11,7 @@ from typing import Any, TypeVar
 
 
 _T = TypeVar("_T")
-GENERATOR_VERSION = "hard-request-v2"
+GENERATOR_VERSION = "hard-request-v3"
 
 
 GENERAL_CATEGORIES = (
@@ -255,9 +255,34 @@ def choose_category(row: dict[str, Any], index: int) -> str:
     return candidates[choice % len(candidates)]
 
 
+def mandatory_checklist(row: dict[str, Any], category: str) -> list[str]:
+    source = str(row["raw_user_request"])
+    plan = row["target_plan"]
+    checklist = [
+        f"retain the concept '{term}'"
+        for term in sorted(constraint_terms(source))
+    ]
+    if plan["subtask"] == "combined_tasks":
+        normalized = re.sub(r"[^a-z0-9]+", " ", source.lower()).strip()
+        checklist.extend(
+            f"express the '{action}' edit action"
+            for action, terms in COMBINED_ACTION_GROUPS.items()
+            if any(_contains_term(normalized, term) for term in terms)
+        )
+    if category == "pronoun_grounding":
+        checklist.append("use a demonstrative or grounding pronoun such as 'that', 'this', or 'the one'")
+    if category == "under_search" and _enabled(plan.get("image_search")):
+        checklist.append(f"name the searched identity '{plan['image_search']}'")
+    if category == "mask_granularity" and isinstance(plan.get("mask"), str):
+        checklist.append(f"identify the mask target with these details: {plan['mask']}")
+    return checklist
+
+
 def build_prompt(row: dict[str, Any], category: str) -> str:
     clean = row["target_plan"]["refined_text_instruction"]
     plan = json.dumps(row["target_plan"], ensure_ascii=False, separators=(",", ":"))
+    checklist = mandatory_checklist(row, category)
+    checklist_text = "\n".join(f"- {item}" for item in checklist) or "- preserve the full edit action"
     return f"""Rewrite a clean video-editing instruction as one realistic, terse user request.
 Hard-case category: {category}
 Category rule: {CATEGORY_GUIDANCE[category]}
@@ -266,7 +291,11 @@ Requirements:
 - Preserve the complete edit intent. Never invent a new edit, object, brand, color, count, or location.
 - Keep all constraints that would change the correct edited result.
 - The planner will also see the source video, so natural pronouns and visual references are allowed.
+- Completeness is more important than brevity. Natural synonyms are allowed, but every checklist item must remain explicit.
 - Output one JSON object only: {{"raw_user_request":"..."}}
+
+Mandatory content checklist:
+{checklist_text}
 
 Clean instruction: {clean}
 Target plan: {plan}"""
