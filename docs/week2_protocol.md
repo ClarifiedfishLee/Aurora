@@ -91,12 +91,12 @@ python -m scripts.augment_planner_sft \
   --search-count 500 --routing-count 500
 ```
 
-The external-entity catalog deliberately excludes identities used by the
-100-case regression suite. Search examples alternate `add_object` and
-`replace_object`; routing examples cover every executable route except
-`customization`, which requires a real reference image and must not be faked
-with a video-only record. Re-run the same 100-case gate before expanding the
-working set.
+The final calibration generator contains 160 concrete entities across brand
+products, IP characters, landmarks, and cultural artifacts. It combines them
+with 32 request/spatial templates for addition and replacement. Routing
+calibration separately covers all 11 planner
+subtasks, including `customization`, with three distinct semantic templates
+per subtask. Re-run the same 100-case gate before expanding the working set.
 
 The calibrated 1,500-case run passed that gate:
 
@@ -126,3 +126,109 @@ python -m scripts.run_planner_teacher_vllm \
   --out /tmp/aurora-sft-5k/teacher/agent_pipeline_records.jsonl \
   --batch-size 8 --video-frames 6 --frame-max-side 448
 ```
+
+## 5. Assemble the final v2 dataset
+
+The source export contains 4,999 valid canonical records; one blank source
+instruction is filtered before composition. Strict semantic checks accept
+4,598 generated hard requests. The remaining 401 valid sources intentionally
+have no hard variant because none passed the quality checks, rather than being
+filled with weak synthetic data. One extra hard row derived from the blank
+source is dropped and reported.
+
+Assemble canonical, accepted-hard, and calibration records with the partial
+hard set explicitly allowed:
+
+```bash
+python -m scripts.assemble_final_sft \
+  --canonical /tmp/aurora-sft-5k/sft_canonical.jsonl \
+  --base-llama /tmp/aurora-sft-5k/sft_llama.jsonl \
+  --hard-metadata /tmp/aurora-sft-5k/hard_requests_v2.jsonl \
+  --out /tmp/aurora-sft-5k/sft_final_12597_v2.jsonl \
+  --summary-out /tmp/aurora-sft-5k/sft_final_12597_v2_summary.json \
+  --search-count 2000 --routing-count 1000 \
+  --allow-partial-hard --drop-extra-hard
+```
+
+The expected v2 composition is:
+
+| Partition | Records |
+|---|---:|
+| Canonical base | 4,999 |
+| Accepted hard requests | 4,598 |
+| Under-search calibration | 2,000 |
+| Routing calibration | 1,000 |
+| **Total** | **12,597** |
+
+Do not bypass the assembly checks: they verify canonical/base alignment,
+assistant JSON, media identity, hard-request acceptance flags, calibration
+coverage, and unknown or missing hard rows.
+
+## 6. Build the grouped split and train
+
+Split by source-video identity, not by row. Canonical, hard, search, and routing
+variants derived from the same source must remain on one side of the split:
+
+```bash
+python -m scripts.make_llamafactory_config \
+  --dataset /tmp/aurora-sft-5k/sft_final_12597_v2.jsonl \
+  --model /mlx_devbox/users/jieyu.li/models/Qwen3-VL-8B-Instruct \
+  --output-dir /tmp/aurora-sft-5k/lora-final-12597 \
+  --config-out /tmp/aurora-sft-5k/train_final_12597.yaml \
+  --eval-ratio 0.02
+```
+
+The deterministic grouped split contains 12,339 training rows from 4,899
+videos and 258 evaluation rows from 100 videos, with zero source-video overlap.
+The generated config retains LoRA rank 32 / alpha 64, evaluates and checkpoints
+during the one-epoch run, and keeps only the two newest checkpoints.
+
+Launch training in the prepared Worker environment:
+
+```bash
+HF_HOME=/tmp/llamafactory-hf-cache \
+/tmp/llamafactory-venv/bin/llamafactory-cli train \
+  /tmp/aurora-sft-5k/train_final_12597.yaml
+```
+
+The prepared model working copies, training data, environment, and live output
+are under the Worker's `/tmp`; only the base-model path above is persistent.
+`/tmp` disappears with the Worker. For this run the persistent `/mlx_devbox`
+volume was already full, so copying there would not be a valid backup. After
+the trainer exits successfully, use resumable `rsync` to stage the complete
+output directory in the Devbox master's `/tmp`, then immediately pull it into
+`runs/week2/final_12597/` on the local machine. Generate a sorted SHA-256
+manifest on the Worker and verify it locally before treating the backup as
+complete. Retain the Devbox staging copy until local verification succeeds.
+
+## 7. Day-14 agent-only gate
+
+Run the unchanged 100-case development regression with the final adapter, then
+score it with the same deterministic evaluator used for every earlier model:
+
+```bash
+python -m aurora.agent \
+  --custom_cases_jsonl data/week1/planner_100.jsonl \
+  --custom_only --plan_only --mask_backend none \
+  --agent_base /mlx_devbox/users/jieyu.li/models/Qwen3-VL-8B-Instruct \
+  --agent_adapter /tmp/aurora-sft-5k/lora-final-12597 \
+  --out_dir /tmp/aurora-sft-5k/day14_gate
+
+python -m evaluation.agent_only_score \
+  --gold data/week1/planner_100.jsonl \
+  --predictions /tmp/aurora-sft-5k/day14_gate/agent_pipeline_records.jsonl \
+  --out /tmp/aurora-sft-5k/day14_gate/metrics.json
+```
+
+Pre-register the pass criteria before reading the final result: JSON validity
+at least 99%, routing accuracy at least 95%, search F1 at least 80%, mask F1 at
+least 95%, lexical constraint retention at least 80%, constraint-case
+retention at least 65%, and source-entity false-trigger rate at most 5%. The
+final model must also show a clear improvement over the released Aurora LoRA
+in both routing and retention; meeting only the absolute thresholds is not
+sufficient. Do not revise these thresholds after seeing the result.
+
+Record the result next to the historical 500/1,500 rows, but do not treat this
+reused development suite as the final held-out benchmark. Preference-data work
+begins only after this gate passes or the failure has been diagnosed and the
+SFT data corrected.
